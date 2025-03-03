@@ -3,6 +3,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import connectDB from "./config/db-connection.js"; 
+import uploadFiles from "./utils/upload.js";
 
 dotenv.config(); 
 const app = express();
@@ -12,6 +13,8 @@ app.use(cors());
 
 connectDB();
 
+const FOLDER_PATH = "../transcripts";
+uploadFiles(FOLDER_PATH);
 
 app.get("/", (req, res) => {
   res.send("Node.js backend is running");
