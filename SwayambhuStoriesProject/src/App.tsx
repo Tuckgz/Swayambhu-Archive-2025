@@ -1,6 +1,7 @@
 import { useState } from "react";
 import "./App.css";
 import templeIcon from "./assets/templeIcon.png";
+import Search from "./Search";
 
 function HomePage() {
   return (
@@ -11,7 +12,7 @@ function HomePage() {
       </div>
 
       <div>
-        
+        <Search />
       </div>
     </>
   );
