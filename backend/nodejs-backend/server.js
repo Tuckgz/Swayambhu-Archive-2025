@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import connectDB from "./config/db-connection.js"; 
 import uploadFiles from "./utils/upload.js";
+import getSRT from "./utils/getSRT.js";
 
 dotenv.config(); 
 const app = express();
@@ -16,11 +17,15 @@ connectDB();
 const FOLDER_PATH = "../transcripts";
 uploadFiles(FOLDER_PATH);
 
+app.use("/api", getSRT);
+
 app.get("/", (req, res) => {
   res.send("Node.js backend is running");
 });
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+
 
 
 
