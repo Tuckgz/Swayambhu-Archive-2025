@@ -18,7 +18,10 @@ connectDB();
 const FOLDER_PATH = "../transcripts";
 uploadFiles(FOLDER_PATH);
 
-app.use("/file", getFile);
+app.use("/file", getFile); 
+// http://localhost:5000/file/example.srt?search=hello - how to request a word within the file with a timestamp
+// http://localhost:5000/file/example.srt - how to request the entire file
+
 app.use("/file", deleteFile);
 
 app.get("/", (req, res) => {
