@@ -7,16 +7,16 @@ interface SearchTermProps {
 
 const SearchTerm: React.FC<SearchTermProps> = ({ term, onRemove }) => {
   return (
-    <div className="search-term">
+    <span className="flex items-center rounded-full bg-orange-100 px-3 py-1 text-sm text-gray-800">
       {term}
-      <button 
-        className="remove-term"
+      <button
+        className="ml-2 text-lg font-bold text-gray-800 hover:text-red-500"
         onClick={onRemove}
         aria-label={`Remove ${term}`}
       >
         &times;
       </button>
-    </div>
+    </span>
   );
 };
 

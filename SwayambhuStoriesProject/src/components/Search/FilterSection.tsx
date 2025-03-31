@@ -7,8 +7,8 @@ interface FilterSectionProps {
 
 const FilterSection: React.FC<FilterSectionProps> = ({ title, children }) => {
   return (
-    <div className="filter-section">
-      <h3 className="filter-title">{title}</h3>
+    <div className="mb-4">
+      <h3 className="mb-2 text-sm font-semibold text-gray-800">{title}</h3>
       {children}
     </div>
   );

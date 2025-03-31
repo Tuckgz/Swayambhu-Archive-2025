@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import SearchFilters from "../components/Search/SearchFilters";
 import DropdownFilter from "../components/Search/DropdownFilter";
 import VideoCard from "../components/Video/VideoCard";
 import { FaFilter } from "react-icons/fa";
@@ -14,7 +13,6 @@ const HomePage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const videosPerPage = 5;
 
-  // Filter options
   const languageOptions = ["NEPALI", "ENGLISH"];
   const sourceOptions = ["Interview", "Documentary", "Lecture"];
   const speakerOptions = ["Academic", "Community Member", "Religious Leader"];
@@ -33,7 +31,6 @@ const HomePage: React.FC = () => {
     setSearchTerms(newTerms);
   };
 
-  // Mock video data
   const allVideos = Array.from({ length: 12 }).map((_, i) => ({
     id: i + 1,
     title: `Interview Title ${i + 1}`,
@@ -43,7 +40,6 @@ const HomePage: React.FC = () => {
     categories: [`Category ${(i % 3) + 1}`, `Category ${((i + 1) % 3) + 1}`],
   }));
 
-  // Pagination logic
   const indexOfLastVideo = currentPage * videosPerPage;
   const indexOfFirstVideo = indexOfLastVideo - videosPerPage;
   const currentVideos = allVideos.slice(indexOfFirstVideo, indexOfLastVideo);
@@ -52,60 +48,60 @@ const HomePage: React.FC = () => {
   return (
     <div>
       <Header />
-
-      <div className="content-wrapper">
-        {/* Search + Filter Area */}
-        <div className="search-terms-section">
-          {/* Add Term Input */}
-          <div className="add-term-row">
-            <div className="add-term-input-container">
-              <input
-                type="text"
-                value={newTerm}
-                onChange={(e) => setNewTerm(e.target.value)}
-                placeholder="Add search term"
-                className="add-term-input"
-                onKeyPress={(e) => e.key === "Enter" && handleAddTerm()}
-              />
-              <button className="add-term-button" onClick={handleAddTerm}>
-                Add Term
-              </button>
-            </div>
+      <div className="mx-auto px-5 py-8 bg-amber-50">
+        <div className="mb-8 w-full">
+          <div className="flex w-full gap-4 mb-4">
+            <input
+              type="text"
+              value={newTerm}
+              onChange={(e) => setNewTerm(e.target.value)}
+              placeholder="Add search term"
+              className="w-full rounded border border-yellow-800 bg-orange-100 px-4 py-2 placeholder:text-gray-700 focus:outline-none"
+              onKeyPress={(e) => e.key === "Enter" && handleAddTerm()}
+            />
+            <button
+              className="w-50 rounded border border-yellow-900 bg-yellow-800 px-4 py-2 text-gray-800 hover:bg-yellow-700"
+              onClick={handleAddTerm}
+            >
+              Add Term
+            </button>
           </div>
 
-          {/* Added Terms + Filter Button */}
-          <div className="search-terms-row">
-            <div className="search-terms-container">
+          <div className="flex flex-wrap items-center justify-between">
+            <div className="flex flex-wrap gap-2">
               {searchTerms.map((term, index) => (
-                <div key={index} className="search-term">
+                <span
+                  key={index}
+                  className="flex items-center rounded-full bg-orange-100 px-3 py-1 text-sm text-gray-800"
+                >
                   {term}
                   <button
-                    className="remove-term"
+                    className="ml-2 text-lg font-bold text-gray-800 hover:text-red-500"
                     onClick={() => handleRemoveTerm(index)}
                   >
                     &times;
                   </button>
-                </div>
+                </span>
               ))}
             </div>
 
-            <button className="filter-results-button">
-              <FaFilter style={{ marginRight: "8px" }} />
-              Filter Results
+            <button className="mt-4 flex items-center justify-center gap-2 rounded bg-blue-100 px-4 py-2 text-gray-800 hover:bg-blue-200 md:mt-0">
+              <FaFilter /> Filter Results
             </button>
           </div>
         </div>
 
-        {/* Main Content Area */}
-        <div className="main-content">
-          <aside className="sidebar">
-            <DropdownFilter title="LANGUAGE" options={languageOptions} />
-            <DropdownFilter title="SOURCE TYPE" options={sourceOptions} />
-            <DropdownFilter title="SPEAKER TYPE" options={speakerOptions} />
-            <DropdownFilter title="LOCATION" options={locationOptions} />
+        <div className="flex gap-6">
+          <aside className="w-[280px] shrink-0 rounded bg-transparent p-0">
+            <div className="space-y-4 rounded bg-[rgba(215,185,133,0.13)] p-6">
+              <DropdownFilter title="LANGUAGE" options={languageOptions} />
+              <DropdownFilter title="SOURCE TYPE" options={sourceOptions} />
+              <DropdownFilter title="SPEAKER TYPE" options={speakerOptions} />
+              <DropdownFilter title="LOCATION" options={locationOptions} />
+            </div>
           </aside>
 
-          <div className="video-list">
+          <div className="flex-1">
             {currentVideos.map((video) => (
               <VideoCard
                 key={video.id}
@@ -118,12 +114,12 @@ const HomePage: React.FC = () => {
             ))}
 
             {totalPages > 1 && (
-              <div className="pagination">
+              <div className="mt-8 flex justify-center gap-2">
                 {Array.from({ length: totalPages }).map((_, index) => (
                   <button
                     key={index}
-                    className={`page-button ${
-                      currentPage === index + 1 ? "active" : ""
+                    className={`rounded border border-yellow-800 px-3 py-1 text-gray-800 hover:bg-yellow-300 ${
+                      currentPage === index + 1 ? "bg-yellow-800 text-white" : "bg-orange-100"
                     }`}
                     onClick={() => setCurrentPage(index + 1)}
                   >
