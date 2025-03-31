@@ -1,21 +1,13 @@
-import { useState } from "react";
-import "./App.css";
-import templeIcon from "./assets/templeIcon.png";
-import Search from "./Search";
+import React from 'react';
+// import './styles/styles.css';
+import HomePage from './pages/HomePage';
 
-function HomePage() {
+const App: React.FC = () => {
   return (
-    <>
-      <div className="titleBar">
-        <img src={templeIcon} alt="Temple Icon" className="icon" />
-        <h2>Swayambhu Story Archive</h2>
-      </div>
-
-      <div>
-        <Search />
-      </div>
-    </>
+    <div className="App">
+      <HomePage />
+    </div>
   );
-}
+};
 
-export default HomePage;
+export default App;
