@@ -11,7 +11,7 @@ const getSubtitleFile = async (req, res) => {
         const subFile = await subtitleFile.findOne({ name });
 
         if (!subFile) {
-            return res.status(404).json({ error: "File not found" });
+            return res.status(404).json({ error: "File not found 2" });
         }
 
         if(search) {

@@ -8,6 +8,11 @@ const subtitleFileSchema = new mongoose.Schema({
   date: { type: Date, default: Date.now }
 });
 
+
+// allows for mongoDB indexing making our database wide word search queries faster
+subtitleFileSchema.index({ content: "text" })
+
+
 //connection point, will create one if one does not exist
 const subtitleFile = mongoose.model("SRTFile", subtitleFileSchema);
 export default subtitleFile;
