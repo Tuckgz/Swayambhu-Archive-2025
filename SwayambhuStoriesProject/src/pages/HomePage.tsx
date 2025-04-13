@@ -1,35 +1,28 @@
+// src/pages/HomePage.tsx
 import React, { useState } from "react";
 import DropdownFilter from "../components/Search/DropdownFilter";
 import VideoCard from "../components/Video/VideoCard";
 import { FaFilter } from "react-icons/fa";
 import Header from "../components/Header";
+import UserMenu from "../components/UserMenu";
 
 const HomePage: React.FC = () => {
+  // Existing states for search and pagination
   const [searchTerms, setSearchTerms] = useState<string[]>([
     "Rituals",
     "Familial Duties",
   ]);
   const [newTerm, setNewTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const videosPerPage = 5;
 
-  const languageOptions = ["NEPALI", "ENGLISH"];
-  const sourceOptions = ["Interview", "Documentary", "Lecture"];
-  const speakerOptions = ["Academic", "Community Member", "Religious Leader"];
-  const locationOptions = ["Kathmandu", "Patan", "Bhaktapur", "Other"];
-
-  const handleAddTerm = () => {
-    if (newTerm.trim() && !searchTerms.includes(newTerm.trim())) {
-      setSearchTerms([...searchTerms, newTerm.trim()]);
-      setNewTerm("");
-    }
+  // Toggle the visibility of the UserMenu
+  const toggleUserMenu = () => {
+    setUserMenuOpen((prev) => !prev);
   };
 
-  const handleRemoveTerm = (index: number) => {
-    const newTerms = [...searchTerms];
-    newTerms.splice(index, 1);
-    setSearchTerms(newTerms);
-  };
+  // ... other handlers (handleAddTerm, handleRemoveTerm, etc.) remain unchanged
 
   const allVideos = Array.from({ length: 12 }).map((_, i) => ({
     id: i + 1,
@@ -46,9 +39,15 @@ const HomePage: React.FC = () => {
   const totalPages = Math.ceil(allVideos.length / videosPerPage);
 
   return (
-    <div>
-      <Header />
+    <div className="relative">
+      {/* Pass the toggle callback to Header */}
+      <Header onUserIconClick={toggleUserMenu} />
+      
+      {/* Conditionally render the UserMenu */}
+      {userMenuOpen && <UserMenu />}
+
       <div className="mx-auto px-5 py-8 bg-amber-50">
+        {/* Search input and buttons */}
         <div className="mb-8 w-full">
           <div className="flex w-full gap-4 mb-4">
             <input
@@ -57,11 +56,11 @@ const HomePage: React.FC = () => {
               onChange={(e) => setNewTerm(e.target.value)}
               placeholder="Add search term"
               className="w-full rounded border border-yellow-800 bg-orange-100 px-4 py-2 placeholder:text-gray-700 focus:outline-none"
-              onKeyPress={(e) => e.key === "Enter" && handleAddTerm()}
+              onKeyPress={(e) => e.key === "Enter" && newTerm.trim() && setSearchTerms([...searchTerms, newTerm.trim()])}
             />
             <button
               className="w-50 rounded border border-yellow-900 bg-yellow-800 px-4 py-2 text-gray-800 hover:bg-yellow-700"
-              onClick={handleAddTerm}
+              onClick={() => newTerm.trim() && setSearchTerms([...searchTerms, newTerm.trim()])}
             >
               Add Term
             </button>
@@ -77,7 +76,11 @@ const HomePage: React.FC = () => {
                   {term}
                   <button
                     className="ml-2 text-lg font-bold text-gray-800 hover:text-red-500"
-                    onClick={() => handleRemoveTerm(index)}
+                    onClick={() => {
+                      const newTerms = [...searchTerms];
+                      newTerms.splice(index, 1);
+                      setSearchTerms(newTerms);
+                    }}
                   >
                     &times;
                   </button>
@@ -91,13 +94,14 @@ const HomePage: React.FC = () => {
           </div>
         </div>
 
+        {/* Rest of your page content */}
         <div className="flex gap-6">
           <aside className="w-[280px] shrink-0 rounded bg-transparent p-0">
             <div className="space-y-4 rounded bg-[rgba(215,185,133,0.13)] p-6">
-              <DropdownFilter title="LANGUAGE" options={languageOptions} />
-              <DropdownFilter title="SOURCE TYPE" options={sourceOptions} />
-              <DropdownFilter title="SPEAKER TYPE" options={speakerOptions} />
-              <DropdownFilter title="LOCATION" options={locationOptions} />
+              <DropdownFilter title="LANGUAGE" options={["NEPALI", "ENGLISH"]} />
+              <DropdownFilter title="SOURCE TYPE" options={["Interview", "Documentary", "Lecture"]} />
+              <DropdownFilter title="SPEAKER TYPE" options={["Academic", "Community Member", "Religious Leader"]} />
+              <DropdownFilter title="LOCATION" options={["Kathmandu", "Patan", "Bhaktapur", "Other"]} />
             </div>
           </aside>
 

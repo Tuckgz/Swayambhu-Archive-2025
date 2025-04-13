@@ -1,8 +1,13 @@
+// src/components/Header.tsx
 import React from 'react';
 import { FaUserCircle } from 'react-icons/fa';
 import logoImage from '../assets/templeIcon.png';
 
-const Header: React.FC = () => {
+type HeaderProps = {
+  onUserIconClick: () => void;
+};
+
+const Header: React.FC<HeaderProps> = ({ onUserIconClick }) => {
   return (
     <header className="sticky top-0 z-50 h-[60px] bg-yellow-400 shadow-md">
       <div className="flex h-full items-center justify-between px-8">
@@ -16,7 +21,7 @@ const Header: React.FC = () => {
             Swayambhu Story Archive
           </h1>
         </div>
-        <div className="text-2xl text-gray-800 cursor-pointer">
+        <div className="text-2xl text-gray-800 cursor-pointer" onClick={onUserIconClick}>
           <FaUserCircle />
         </div>
       </div>
