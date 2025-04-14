@@ -10,7 +10,7 @@ This is an extension of an existing project centered on transcription and storag
     - "cd backend/nodejs-backend"
     - "node server.js"
     
-    Those command should result in the following:
+    Those commands should result in the following:
     
     "Server running on port 5000"
     "Connection Made to Mongodb"
