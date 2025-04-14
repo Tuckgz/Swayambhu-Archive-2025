@@ -3,14 +3,14 @@ import React from 'react';
 interface CheckboxFilterProps {
   label: string;
   name: string;
-  checked?: boolean;
-  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  isChecked: boolean;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 const CheckboxFilter: React.FC<CheckboxFilterProps> = ({
   label,
   name,
-  checked = false,
+  isChecked,
   onChange,
 }) => {
   return (
@@ -19,7 +19,7 @@ const CheckboxFilter: React.FC<CheckboxFilterProps> = ({
         type="checkbox"
         id={name}
         name={name}
-        checked={checked}
+        checked={isChecked}
         onChange={onChange}
         className="h-4 w-4 rounded border-gray-300 text-yellow-800 focus:ring-yellow-800"
       />
