@@ -238,6 +238,8 @@ const HomePage: React.FC = () => {
                 language={video.language}
                 length={video.length}
                 categories={video.categories}
+                speaker={video.speaker}
+                date={video.date}
               />
             ))}
 
