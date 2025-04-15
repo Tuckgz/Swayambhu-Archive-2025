@@ -166,7 +166,7 @@ def translate_text_google(text_list, target_language="en"):
         result = google_client.translate(text_list, target_language=target_language)
         return result['translatedText']
 
-def translate_srt(segments, source_lang, target_lang="en", audio_file=None):
+def translate_vtt(segments, source_lang, target_lang="en", audio_file=None):
     """Translate segments (assumed to have keys 'start', 'end', 'text') and write a VTT file."""
     texts = [segment["text"].strip() for segment in segments]
     translated_texts = translate_text_google(texts, target_lang)
@@ -188,31 +188,6 @@ def translate_srt(segments, source_lang, target_lang="en", audio_file=None):
 # ---------------------
 # SUBTITLE PARSING FUNCTIONS
 # ---------------------
-def parse_srt(srt_file_path):
-    """Parse an SRT file and return segments as a list of dictionaries."""
-    segments = []
-    try:
-        with open(srt_file_path, "r", encoding="utf-8") as file:
-            content = file.read().strip()
-        # Assume SRT blocks are separated by two newlines.
-        blocks = content.split("\n\n")
-        for block in blocks:
-            lines = block.split("\n")
-            if len(lines) >= 3:
-                # SRT blocks begin with an index, then time range, then text.
-                try:
-                    # index = int(lines[0].strip())
-                    times = lines[1].strip()
-                    start_time, end_time = times.split(" --> ")
-                    text = " ".join(lines[2:]).strip()
-                    segments.append({"start": start_time, "end": end_time, "text": text})
-                except Exception:
-                    continue
-    except Exception as e:
-        print(f"Error parsing SRT file: {e}")
-        return None
-    return segments
-
 def parse_vtt(vtt_file_path):
     """Parse a VTT file and return segments as a list of dictionaries."""
     segments = []
@@ -233,14 +208,11 @@ def parse_vtt(vtt_file_path):
         return None
     return segments
 
-def process_subtitle(sub_file, translate_flag):
-    """Process a subtitle file (SRT or VTT) for translation."""
-    if sub_file.lower().endswith(".vtt"):
-        segments = parse_vtt(sub_file)
-    else:
-        segments = parse_srt(sub_file)
+def process_subtitle(vtt_file, translate_flag):
+    """Process a VTT subtitle file for translation."""
+    segments = parse_vtt(vtt_file)
     if translate_flag and segments:
-        translate_srt(segments, source_lang="unknown", target_lang="en", audio_file=sub_file)
+        translate_vtt(segments, source_lang="unknown", target_lang="en", audio_file=vtt_file)
     else:
         print("Skipping translation for subtitle file.")
 
@@ -248,11 +220,11 @@ def process_subtitle(sub_file, translate_flag):
 # PROCESSING FUNCTION
 # ---------------------
 def process_audio(
-    audio_method,          # 0 = MOV/MP4, 1 = YouTube URL, 2 = MP3, 3 = Subtitle file (SRT/VTT)
+    audio_method,          # 0 = MOV/MP4, 1 = YouTube URL, 2 = MP3, 3 = Subtitle file (VTT for translation only)
     audio_url=None,
     audio_file=None,
     mp3_file=None,
-    srt_file=None,
+    vtt_file=None,
     transcribe_flag=1,
     transcription_method=1,  # 1 = API, 2 = Local, 3 = API (Forced Language)
     translate_flag=0,
@@ -266,8 +238,8 @@ def process_audio(
         audio_file = adjust_filepath(audio_file)
     if mp3_file:
         mp3_file = adjust_filepath(mp3_file)
-    if srt_file:
-        srt_file = adjust_filepath(srt_file)
+    if vtt_file:
+        vtt_file = adjust_filepath(vtt_file)
 
     processed_audio = None
     # Determine input source.
@@ -287,10 +259,10 @@ def process_audio(
             raise ValueError("An MP3 file path is required.")
         processed_audio = mp3_file
     elif audio_method == 3:
-        # Subtitle file (SRT or VTT) for translation only.
-        if not srt_file:
-            raise ValueError("A subtitle file path is required.")
-        process_subtitle(srt_file, translate_flag=1)
+        # Subtitle file (VTT) for translation only.
+        if not vtt_file:
+            raise ValueError("A VTT subtitle file path is required.")
+        process_subtitle(vtt_file, translate_flag=1)
         return
     else:
         raise ValueError("Invalid audio_method value.")
@@ -306,7 +278,7 @@ def process_audio(
         elif transcription_method == 2:
             # Use local_whisper from local_transcribe.py – assuming it has the same signature.
             try:
-                from local_transcribe import local_whisper
+                from backend.transcription.development.local_transcribe import local_whisper
             except ImportError:
                 print("local_whisper function not found in local_transcribe.py")
                 return
@@ -328,7 +300,7 @@ def process_audio(
 
     # Translation step (if requested)
     if translate_flag and segments and detected_lang:
-        translate_srt(segments, detected_lang, target_lang="en", audio_file=processed_audio)
+        translate_vtt(segments, detected_lang, target_lang="en", audio_file=processed_audio)
     else:
         print("Skipping translation.")
 
@@ -344,7 +316,7 @@ def main():
     group.add_argument("--dir", type=str, help="Directory containing video files (MP4/MOV) to process")
     group.add_argument("--youtube", type=str, help="YouTube or audio URL to download and process")
     # Flags to specify type of input file
-    parser.add_argument("--vtt", action="store_true", help="Input file is a VTT file (translation only; ignores local flag)")
+    parser.add_argument("--vtt", action="store_true", help="Input file is a VTT subtitle file (translation only; ignores local flag)")
     parser.add_argument("--mp3", action="store_true", help="Input file is an MP3 file")
     # Processing options
     parser.add_argument("--local", "-l", action="store_true", help="Run local Whisper transcription (ignored if --vtt is used)")
@@ -376,7 +348,7 @@ def main():
         # For subtitles, translation is implicit.
         process_audio(
             audio_method=3,
-            srt_file=args.file,
+            vtt_file=args.file,
             transcribe_flag=0,
             translate_flag=1
         )
