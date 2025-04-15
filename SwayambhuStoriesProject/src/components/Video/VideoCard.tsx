@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 interface VideoCardProps {
   id: number;
@@ -21,14 +22,23 @@ const VideoCard: React.FC<VideoCardProps> = ({
   speaker,
   date,
 }) => {
+  const navigate = useNavigate();
+
   const formattedDate = date.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
 
+  const handleClick = () => {
+    navigate(`/video/${id}`);
+  };
+
   return (
-    <div className="mb-6 flex gap-4 rounded p-4 shadow-sm hover:shadow-md transition-shadow duration-200 bg-orange-100">
+    <button
+      onClick={handleClick}
+      className="w-full text-left mb-6 flex gap-4 rounded p-4 shadow-sm hover:shadow-md transition-shadow duration-200 bg-orange-100 focus:outline-none"
+    >
       {/* Thumbnail Placeholder */}
       <div className="w-32 h-32 bg-gray-300 rounded flex items-center justify-center text-sm text-gray-600">
         Thumbnail
@@ -41,25 +51,15 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
         {/* Metadata Row 1 */}
         <div className="mt-2 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-700">
-          <p>
-            <strong>Participants:</strong> {participants}
-          </p>
-          <p>
-            <strong>Language:</strong> {language}
-          </p>
-          <p>
-            <strong>Speaker:</strong> {speaker}
-          </p>
+          <p><strong>Participants:</strong> {participants}</p>
+          <p><strong>Language:</strong> {language}</p>
+          <p><strong>Speaker:</strong> {speaker}</p>
         </div>
 
         {/* Metadata Row 2 */}
         <div className="mt-1 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-700">
-          <p>
-            <strong>Length:</strong> {length}
-          </p>
-          <p>
-            <strong>Date:</strong> {formattedDate}
-          </p>
+          <p><strong>Length:</strong> {length}</p>
+          <p><strong>Date:</strong> {formattedDate}</p>
         </div>
 
         {/* Categories */}
@@ -74,7 +74,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
           ))}
         </div>
       </div>
-    </div>
+    </button>
   );
 };
 
