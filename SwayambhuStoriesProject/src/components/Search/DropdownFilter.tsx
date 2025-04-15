@@ -4,10 +4,13 @@ import { FaChevronDown } from 'react-icons/fa';
 interface DropdownFilterProps {
   title: string;
   options: string[];
+  selected: string[];
+  setSelected: React.Dispatch<React.SetStateAction<string[]>>;
 }
 
 const DropdownFilter: React.FC<DropdownFilterProps> = ({ title, options }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [selected, setSelected] = useState([])
 
   return (
     <div className="border-b border-[rgba(215,185,133,0.3)] pb-2">

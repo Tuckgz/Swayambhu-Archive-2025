@@ -84,7 +84,7 @@ const HomePage: React.FC = () => {
                 </span>
               ))}
             </div>
-
+            
             <button className="mt-4 flex items-center justify-center gap-2 rounded bg-blue-100 px-4 py-2 text-gray-800 hover:bg-blue-200 md:mt-0">
               <FaFilter /> Filter Results
             </button>
@@ -102,16 +102,18 @@ const HomePage: React.FC = () => {
           </aside>
 
           <div className="flex-1">
-            {currentVideos.map((video) => (
-              <VideoCard
-                key={video.id}
-                title={video.title}
-                participants={video.participants}
-                language={video.language}
-                length={video.length}
-                categories={video.categories}
-              />
-            ))}
+          {currentVideos.map((video) => (
+  <VideoCard
+    key={video.id}
+    id={video.id} // Pass ID here!
+    title={video.title}
+    participants={video.participants}
+    language={video.language}
+    length={video.length}
+    categories={video.categories}
+  />
+))}
+
 
             {totalPages > 1 && (
               <div className="mt-8 flex justify-center gap-2">

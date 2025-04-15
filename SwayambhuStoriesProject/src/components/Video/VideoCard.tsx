@@ -1,42 +1,43 @@
-import React from 'react';
+import React from "react";
+import { useNavigate } from "react-router-dom";
 
 interface VideoCardProps {
-  title?: string;
-  participants?: string;
-  language?: string;
-  length?: string;
-  categories?: string[];
+  id: number;
+  title: string;
+  participants: string;
+  language: string;
+  length: string;
+  categories: string[];
 }
 
 const VideoCard: React.FC<VideoCardProps> = ({
-  title = "TITLE OF THE INTERVIEW",
-  participants = "PARTICIPANT(S) NAME",
-  language = "LANGUAGE",
-  length = "LENGTH",
-  categories = ["Category 1", "Category 2"],
+  id,
+  title,
+  participants,
+  language,
+  length,
+  categories,
 }) => {
+  const navigate = useNavigate();
+
   return (
-    <div className="mb-6 flex rounded bg-[rgba(215,185,133,0.13)] shadow-sm transition hover:shadow-md">
-      <div className="h-40 w-60 flex-shrink-0 bg-[rgba(215,185,133,0.3)]" />
-      <div className="flex flex-col justify-between p-6">
-        <div>
-          <h3 className="mb-1 text-lg font-semibold text-gray-800">{title}</h3>
-          <p className="mb-3 text-sm text-gray-700 opacity-80">{participants}</p>
-          <div className="mb-3 flex gap-6 text-xs text-gray-700 opacity-80">
-            <span>{language}</span>
-            <span>{length}</span>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {categories.map((category, index) => (
-            <span
-              key={index}
-              className="rounded bg-[rgba(215,185,133,0.3)] px-2 py-1 text-xs text-gray-800"
-            >
-              {category}
-            </span>
-          ))}
-        </div>
+    <div
+      className="mb-4 cursor-pointer rounded border border-yellow-800 bg-orange-100 p-4 hover:bg-yellow-200"
+      onClick={() => navigate(`/video/${id}`)}
+    >
+      <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
+      <p className="text-sm text-gray-700">Participants: {participants}</p>
+      <p className="text-sm text-gray-700">Language: {language}</p>
+      <p className="text-sm text-gray-700">Length: {length}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {categories.map((category, index) => (
+          <span
+            key={index}
+            className="rounded bg-[rgba(215,185,133,0.3)] px-2 py-1 text-xs text-gray-800"
+          >
+            {category}
+          </span>
+        ))}
       </div>
     </div>
   );

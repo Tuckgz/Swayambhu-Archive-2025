@@ -1,13 +1,12 @@
-import React from 'react';
-// import './styles/styles.css';
-import HomePage from './pages/HomePage';
+import { Routes, Route } from "react-router-dom";
+import HomePage from "./pages/HomePage";
+import VideoPreviewPage from "./pages/VideoPreviewPage";
 
-const App: React.FC = () => {
-  return (
-    <div className="App">
-      <HomePage />
-    </div>
-  );
-};
+const App = () => (
+  <Routes>
+    <Route path="/" element={<HomePage />} />
+    <Route path="/video/:videoId" element={<VideoPreviewPage />} />
+  </Routes>
+);
 
 export default App;
