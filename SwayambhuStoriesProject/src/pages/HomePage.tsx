@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import DropdownFilter from "../components/Search/DropdownFilter";
 import VideoCard from "../components/Video/VideoCard";
 import { FaFilter } from "react-icons/fa";
@@ -13,10 +13,18 @@ const HomePage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const videosPerPage = 5;
 
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const [selectedSpeakers, setSelectedSpeakers] = useState<string[]>([]);
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+
   const languageOptions = ["NEPALI", "ENGLISH"];
   const sourceOptions = ["Interview", "Documentary", "Lecture"];
   const speakerOptions = ["Academic", "Community Member", "Religious Leader"];
   const locationOptions = ["Kathmandu", "Patan", "Bhaktapur", "Other"];
+
+  const [sortOption, setSortOption] = useState<string>(""); // "", "duration-asc", "duration-desc", etc.
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
 
   const handleAddTerm = () => {
     if (newTerm.trim() && !searchTerms.includes(newTerm.trim())) {
@@ -31,19 +39,74 @@ const HomePage: React.FC = () => {
     setSearchTerms(newTerms);
   };
 
-  const allVideos = Array.from({ length: 12 }).map((_, i) => ({
-    id: i + 1,
-    title: `Interview Title ${i + 1}`,
-    participants: `Participant ${i + 1}`,
-    language: i % 2 === 0 ? "NEPALI" : "ENGLISH",
-    length: `${Math.floor(Math.random() * 60) + 30} min`,
-    categories: [`Category ${(i % 3) + 1}`, `Category ${((i + 1) % 3) + 1}`],
-  }));
+  const allVideos = useMemo(() => {
+    return Array.from({ length: 12 }).map((_, i) => {
+      const duration = Math.floor(Math.random() * 60) + 30;
+      return {
+        id: i + 1,
+        title: `Interview Title ${i + 1}`,
+        participants: `Participant ${i + 1}`,
+        language: i % 2 === 0 ? "NEPALI" : "ENGLISH",
+        source:
+          i % 3 === 0 ? "Interview" : i % 3 === 1 ? "Documentary" : "Lecture",
+        speaker:
+          i % 2 === 0
+            ? "Academic"
+            : i % 3 === 0
+            ? "Community Member"
+            : "Religious Leader",
+        location:
+          i % 4 === 0
+            ? "Kathmandu"
+            : i % 4 === 1
+            ? "Patan"
+            : i % 4 === 2
+            ? "Bhaktapur"
+            : "Other",
+        length: `${duration} min`,
+        durationInMinutes: duration,
+        date: new Date(2023, 0, i + 1),
+        categories: [
+          `Category ${(i % 3) + 1}`,
+          `Category ${((i + 1) % 3) + 1}`,
+        ],
+      };
+    });
+  }, []);
+
+  const filteredVideos = allVideos.filter((video) => {
+    const matchesLanguage =
+      selectedLanguages.length === 0 ||
+      selectedLanguages.includes(video.language);
+    const matchesSource =
+      selectedSources.length === 0 || selectedSources.includes(video.source);
+    const matchesSpeaker =
+      selectedSpeakers.length === 0 || selectedSpeakers.includes(video.speaker);
+    const matchesLocation =
+      selectedLocations.length === 0 ||
+      selectedLocations.includes(video.location);
+
+    return (
+      matchesLanguage && matchesSource && matchesSpeaker && matchesLocation
+    );
+  });
+
+  let sortedVideos = [...filteredVideos];
+
+  if (sortOption === "duration-asc") {
+    sortedVideos.sort((a, b) => a.durationInMinutes - b.durationInMinutes);
+  } else if (sortOption === "duration-desc") {
+    sortedVideos.sort((a, b) => b.durationInMinutes - a.durationInMinutes);
+  } else if (sortOption === "date-newest") {
+    sortedVideos.sort((a, b) => b.date.getTime() - a.date.getTime());
+  } else if (sortOption === "date-oldest") {
+    sortedVideos.sort((a, b) => a.date.getTime() - b.date.getTime());
+  }
 
   const indexOfLastVideo = currentPage * videosPerPage;
   const indexOfFirstVideo = indexOfLastVideo - videosPerPage;
-  const currentVideos = allVideos.slice(indexOfFirstVideo, indexOfLastVideo);
-  const totalPages = Math.ceil(allVideos.length / videosPerPage);
+  const currentVideos = sortedVideos.slice(indexOfFirstVideo, indexOfLastVideo);
+  const totalPages = Math.ceil(sortedVideos.length / videosPerPage);
 
   return (
     <div>
@@ -84,36 +147,99 @@ const HomePage: React.FC = () => {
                 </span>
               ))}
             </div>
-            
-            <button className="mt-4 flex items-center justify-center gap-2 rounded bg-blue-100 px-4 py-2 text-gray-800 hover:bg-blue-200 md:mt-0">
-              <FaFilter /> Filter Results
-            </button>
+
+            <div className="relative mt-4 md:mt-0">
+              <button
+                onClick={() => setIsSortMenuOpen(!isSortMenuOpen)}
+                className="flex items-center justify-center gap-2 rounded bg-blue-100 px-4 py-2 text-gray-800 hover:bg-blue-200"
+              >
+                <FaFilter /> Filter Results
+              </button>
+
+              {isSortMenuOpen && (
+                <div className="absolute right-0 z-10 mt-2 w-64 rounded border bg-white shadow-lg">
+                  <ul className="text-sm text-gray-800">
+                    <li>
+                      <button
+                        onClick={() => setSortOption("duration-asc")}
+                        className="w-full px-4 py-2 text-left hover:bg-blue-100"
+                      >
+                        Duration: Shortest to Longest
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => setSortOption("duration-desc")}
+                        className="w-full px-4 py-2 text-left hover:bg-blue-100"
+                      >
+                        Duration: Longest to Shortest
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => setSortOption("date-newest")}
+                        className="w-full px-4 py-2 text-left hover:bg-blue-100"
+                      >
+                        Date: Newest First
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => setSortOption("date-oldest")}
+                        className="w-full px-4 py-2 text-left hover:bg-blue-100"
+                      >
+                        Date: Oldest First
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         <div className="flex gap-6">
           <aside className="w-[280px] shrink-0 rounded bg-transparent p-0">
             <div className="space-y-4 rounded bg-[rgba(215,185,133,0.13)] p-6">
-              <DropdownFilter title="LANGUAGE" options={languageOptions} />
-              <DropdownFilter title="SOURCE TYPE" options={sourceOptions} />
-              <DropdownFilter title="SPEAKER TYPE" options={speakerOptions} />
-              <DropdownFilter title="LOCATION" options={locationOptions} />
+              <DropdownFilter
+                title="LANGUAGE"
+                options={languageOptions}
+                selected={selectedLanguages}
+                setSelected={setSelectedLanguages}
+              />
+              <DropdownFilter
+                title="SOURCE TYPE"
+                options={sourceOptions}
+                selected={selectedSources}
+                setSelected={setSelectedSources}
+              />
+              <DropdownFilter
+                title="SPEAKER TYPE"
+                options={speakerOptions}
+                selected={selectedSpeakers}
+                setSelected={setSelectedSpeakers}
+              />
+              <DropdownFilter
+                title="LOCATION"
+                options={locationOptions}
+                selected={selectedLocations}
+                setSelected={setSelectedLocations}
+              />
             </div>
           </aside>
 
           <div className="flex-1">
-          {currentVideos.map((video) => (
-  <VideoCard
-    key={video.id}
-    id={video.id} // Pass ID here!
-    title={video.title}
-    participants={video.participants}
-    language={video.language}
-    length={video.length}
-    categories={video.categories}
-  />
-))}
-
+            {currentVideos.map((video) => (
+              <VideoCard
+                key={video.id}
+                id={video.id}
+                title={video.title}
+                participants={video.participants}
+                language={video.language}
+                length={video.length}
+                categories={video.categories}
+              />
+            ))}
 
             {totalPages > 1 && (
               <div className="mt-8 flex justify-center gap-2">
@@ -121,7 +247,9 @@ const HomePage: React.FC = () => {
                   <button
                     key={index}
                     className={`rounded border border-yellow-800 px-3 py-1 text-gray-800 hover:bg-yellow-300 ${
-                      currentPage === index + 1 ? "bg-yellow-800 text-white" : "bg-orange-100"
+                      currentPage === index + 1
+                        ? "bg-yellow-800 text-white"
+                        : "bg-orange-100"
                     }`}
                     onClick={() => setCurrentPage(index + 1)}
                   >

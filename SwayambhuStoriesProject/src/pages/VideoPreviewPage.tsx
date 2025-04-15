@@ -1,13 +1,13 @@
 import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { FaArrowLeft } from "react-icons/fa";
+import ReactPlayer from "react-player";
 import Header from "../components/Header";
 
 const VideoPreviewPage: React.FC = () => {
   const navigate = useNavigate();
   const { videoId } = useParams();
 
-  // Placeholder data (this would be fetched from your backend)
+  // Placeholder data (update with a real YouTube link)
   const video = {
     title: "Sample Interview Title",
     description: "This is a detailed description of the interview video.",
@@ -15,7 +15,7 @@ const VideoPreviewPage: React.FC = () => {
     language: "Nepali",
     length: "45 min",
     participants: "Participant Name",
-    videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
+    videoUrl: "https://youtu.be/irlGOL63iX8?si=WTXJ_g0M88kO4dbU", // Example YouTube link
     captions: [
       { timestamp: "00:00", text: "Introduction to the speaker." },
       { timestamp: "00:45", text: "Discussion of early life." },
@@ -27,15 +27,35 @@ const VideoPreviewPage: React.FC = () => {
     <div>
       <Header />
       <div className="mx-auto px-5 py-8 bg-amber-50">
-
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Video and Details Section */}
           <div className="w-full lg:w-2/3">
-            <video
-              className="w-full rounded shadow bg-orange-100"
-              controls
-              src={video.videoUrl}
-            />
+            <div className="rounded overflow-hidden shadow bg-orange-100 aspect-video">
+              <ReactPlayer
+                url={video.videoUrl.replace(
+                  "youtube.com",
+                  "youtube-nocookie.com"
+                )}
+                controls
+                width="100%"
+                height="100%"
+                config={{
+                  youtube: {
+                    playerVars: {
+                      modestbranding: 1,
+                      rel: 0,
+                      showinfo: 0,
+                      disablekb: 1,
+                    },
+                    embedOptions: {
+                      sandbox:
+                        "allow-same-origin allow-scripts allow-presentation", // restricts navigation
+                    },
+                  },
+                }}
+                onContextMenu={(e) => e.preventDefault()} // disable right-click context menu
+              />
+            </div>
 
             {/* Video Details (Below the Video) */}
             <div className="mt-6 space-y-4">
