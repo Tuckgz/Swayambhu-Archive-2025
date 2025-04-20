@@ -8,8 +8,8 @@ const truncateText = (text: string, length: number = 50): string =>
 type UploadMode = "url" | "file";
 
 // Set the base URL for the API.
-const API_URL = "https://swayambhu-archive-2025.onrender.com";
-// const API_URL = "http://localhost:5000";
+
+const API_URL = "http://localhost:5000";
 
 const UploadTabCard: React.FC = () => {
   const [uploadMode, setUploadMode] = useState<UploadMode>("url");

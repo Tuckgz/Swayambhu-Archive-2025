@@ -8,15 +8,18 @@ import requests
 from datetime import datetime
 import yt_dlp as youtube_dl
 from google.cloud import translate_v2 as translate
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Set up Google Translate credentials
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.expanduser(
-    ""
+    "/Users/tuckr/APIs/Google Cloud/swayambhu-451702-e759a9ee59ab.json"
 )
 google_client = translate.Client()
 
 # Your OpenAI API key (replace as needed)
-OPENAI_API_KEY = ""
+openai_key = os.getenv("OPENAI_API_KEY")
 
 # Ensure required directories exist
 os.makedirs("audio_files", exist_ok=True)
@@ -63,7 +66,7 @@ def extract_audio_from_video(input_path):
 
 def download_audio(youtube_url):
     """Download audio from a YouTube URL and convert it to MP3."""
-    output_path = os.path.join("audio_files", "audio.mp3")  # Output file path
+    output_path = os.path.join("audio_files", "audio.mp3")
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': os.path.join("audio_files", "audio"),
@@ -88,9 +91,8 @@ def transcribe_audio(audio_path, transcript_path, language_code=None, local=Fals
     When local is True, run local Whisper; otherwise, use the Whisper API.
     """
     if local:
-        # Local transcription using Whisper
         try:
-            import whisper  # Import locally so dependency is optional
+            import whisper
             print(f"Transcribing (local) {audio_path} ...")
             model = whisper.load_model("large")
             result = model.transcribe(audio_path, word_timestamps=True, verbose=True)
@@ -103,21 +105,20 @@ def transcribe_audio(audio_path, transcript_path, language_code=None, local=Fals
                 start_time = format_vtt_timestamp(segment["start"])
                 end_time = format_vtt_timestamp(segment["end"])
                 text = segment["text"].strip()
-                vtt_lines.append(f"{start_time} --> {end_time}")
-                vtt_lines.append(text)
-                vtt_lines.append("")
-            with open(transcript_path, "w", encoding="utf-8") as file:
-                file.write("\n".join(vtt_lines))
+                vtt_lines.extend([f"{start_time} --> {end_time}", text, ""])
+            with open(transcript_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(vtt_lines))
             print(f"Saved VTT transcription to {transcript_path}")
             return segments, detected_language
+
         except Exception as e:
             print(f"Error during local transcription: {e}")
             return None, None
+
     else:
-        # API-based transcription using OpenAI Whisper API
         print(f"Transcribing via API {audio_path} ...")
         url = "https://api.openai.com/v1/audio/transcriptions"
-        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+        headers = {"Authorization": f"Bearer {openai_key}"}
         data = {
             "model": "whisper-1",
             "response_format": "verbose_json",
@@ -129,28 +130,28 @@ def transcribe_audio(audio_path, transcript_path, language_code=None, local=Fals
         try:
             response = requests.post(url, headers=headers, data=data, files=files)
             files["file"].close()
-            if response.status_code == 200:
-                result = response.json()
-                detected_language = result.get("language", "unknown")
-                if "segments" not in result:
-                    print("No segments found in API response.")
-                    return None, None
-                segments = result["segments"]
-                vtt_lines = ["WEBVTT", ""]
-                for segment in segments:
-                    start_time = format_vtt_timestamp(segment["start"])
-                    end_time = format_vtt_timestamp(segment["end"])
-                    text = segment["text"].strip()
-                    vtt_lines.append(f"{start_time} --> {end_time}")
-                    vtt_lines.append(text)
-                    vtt_lines.append("")
-                with open(transcript_path, "w", encoding="utf-8") as file:
-                    file.write("\n".join(vtt_lines))
-                print(f"Saved VTT transcription to {transcript_path}")
-                return segments, detected_language
-            else:
+            if response.status_code != 200:
                 print(f"Error: {response.status_code} response: {response.text}")
                 return None, None
+
+            result = response.json()
+            detected_language = result.get("language", "unknown")
+            segments = result.get("segments", [])
+            if not segments:
+                print("No segments found in API response.")
+                return None, None
+
+            vtt_lines = ["WEBVTT", ""]
+            for segment in segments:
+                start_time = format_vtt_timestamp(segment["start"])
+                end_time = format_vtt_timestamp(segment["end"])
+                text = segment["text"].strip()
+                vtt_lines.extend([f"{start_time} --> {end_time}", text, ""])
+            with open(transcript_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(vtt_lines))
+            print(f"Saved VTT transcription to {transcript_path}")
+            return segments, detected_language
+
         except Exception as e:
             print(f"Exception during API transcription: {e}")
             return None, None
@@ -167,49 +168,47 @@ def translate_text_google(text_list, target_language="en"):
         return result['translatedText']
 
 def translate_vtt(segments, source_lang, target_lang="en", audio_file=None):
-    """Translate segments (assumed to have keys 'start', 'end', 'text') and write a VTT file."""
-    texts = [segment["text"].strip() for segment in segments]
-    translated_texts = translate_text_google(texts, target_lang)
+    """Translate segments and write a VTT file."""
+    texts = [seg["text"].strip() for seg in segments]
+    translated_texts = translate_text_google(texts, target_language=target_lang)
     translated_vtt_path = os.path.join(
         "transcripts",
-        f"{os.path.splitext(os.path.basename(audio_file))[0]}_{get_timestamp()}_en.vtt"
+        f"{os.path.splitext(os.path.basename(audio_file))[0]}_{get_timestamp()}_{target_lang}.vtt"
     )
     vtt_lines = ["WEBVTT", ""]
-    for idx, segment in enumerate(segments):
-        start_time = segment["start"] if isinstance(segment["start"], str) else format_vtt_timestamp(segment["start"])
-        end_time = segment["end"] if isinstance(segment["end"], str) else format_vtt_timestamp(segment["end"])
-        vtt_lines.append(f"{start_time} --> {end_time}")
-        vtt_lines.append(translated_texts[idx])
-        vtt_lines.append("")
-    with open(translated_vtt_path, "w", encoding="utf-8") as file:
-        file.write("\n".join(vtt_lines))
+    for idx, seg in enumerate(segments):
+        start = seg["start"] if isinstance(seg["start"], str) else format_vtt_timestamp(seg["start"])
+        end   = seg["end"]   if isinstance(seg["end"], str)   else format_vtt_timestamp(seg["end"])
+        vtt_lines.extend([f"{start} --> {end}", translated_texts[idx], ""])
+    with open(translated_vtt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(vtt_lines))
     print(f"Translated VTT saved to: {translated_vtt_path}")
 
 # ---------------------
 # SUBTITLE PARSING FUNCTIONS
 # ---------------------
 def parse_vtt(vtt_file_path):
-    """Parse a VTT file and return segments as a list of dictionaries."""
+    """Parse a VTT file and return segments as a list of dicts."""
     segments = []
     try:
-        with open(vtt_file_path, "r", encoding="utf-8") as file:
-            content = file.read().strip()
+        with open(vtt_file_path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
         if content.startswith("WEBVTT"):
             content = content.split("\n", 1)[1].strip()
         blocks = content.split("\n\n")
         for block in blocks:
             lines = block.split("\n")
             if len(lines) >= 2 and " --> " in lines[0]:
-                start_time, end_time = lines[0].split(" --> ")
+                start, end = lines[0].split(" --> ")
                 text = " ".join(lines[1:]).strip()
-                segments.append({"start": start_time, "end": end_time, "text": text})
+                segments.append({"start": start, "end": end, "text": text})
     except Exception as e:
         print(f"Error parsing VTT file: {e}")
         return None
     return segments
 
 def process_subtitle(vtt_file, translate_flag):
-    """Process a VTT subtitle file for translation."""
+    """Process a VTT subtitle file for translation only."""
     segments = parse_vtt(vtt_file)
     if translate_flag and segments:
         translate_vtt(segments, source_lang="unknown", target_lang="en", audio_file=vtt_file)
@@ -220,20 +219,16 @@ def process_subtitle(vtt_file, translate_flag):
 # PROCESSING FUNCTION
 # ---------------------
 def process_audio(
-    audio_method,          # 0 = MOV/MP4, 1 = YouTube URL, 2 = MP3, 3 = Subtitle file (VTT for translation only)
+    audio_method,          # 0=video file,1=YouTube,2=MP3,3=VTT-only
     audio_url=None,
     audio_file=None,
     mp3_file=None,
     vtt_file=None,
     transcribe_flag=1,
-    transcription_method=1,  # 1 = API, 2 = Local, 3 = API (Forced Language)
+    transcription_method=1,  # 1=API,2=Local,3=API-forced
     translate_flag=0,
     forced_lang=None
 ):
-    """
-    Process the input based on the audio_method and flags.
-    """
-    # Adjust file paths if provided.
     if audio_file:
         audio_file = adjust_filepath(audio_file)
     if mp3_file:
@@ -241,25 +236,20 @@ def process_audio(
     if vtt_file:
         vtt_file = adjust_filepath(vtt_file)
 
-    processed_audio = None
-    # Determine input source.
+    # Step 1: get the audio
     if audio_method == 0:
-        # Video file
         if not audio_file:
             raise ValueError("A video file path is required for video processing.")
         processed_audio = extract_audio_from_video(audio_file)
     elif audio_method == 1:
-        # YouTube URL
         if not audio_url:
             raise ValueError("A YouTube URL is required for audio URL processing.")
         processed_audio = download_audio(audio_url)
     elif audio_method == 2:
-        # Existing MP3 file
         if not mp3_file:
             raise ValueError("An MP3 file path is required.")
         processed_audio = mp3_file
     elif audio_method == 3:
-        # Subtitle file (VTT) for translation only.
         if not vtt_file:
             raise ValueError("A VTT subtitle file path is required.")
         process_subtitle(vtt_file, translate_flag=1)
@@ -267,38 +257,51 @@ def process_audio(
     else:
         raise ValueError("Invalid audio_method value.")
 
-    # Transcription step (if not skipped)
+    # Step 2: transcription
     segments = None
     detected_lang = None
     if transcribe_flag == 1:
         base_name = os.path.splitext(os.path.basename(processed_audio))[0]
         transcript_path = os.path.join("transcripts", f"original_{base_name}.vtt")
+
         if transcription_method == 1:
             segments, detected_lang = transcribe_audio(processed_audio, transcript_path)
         elif transcription_method == 2:
-            # Use local_whisper from local_transcribe.py – assuming it has the same signature.
             try:
                 from backend.transcription.development.local_transcribe import local_whisper
+                segments, detected_lang = local_whisper(processed_audio, transcript_path)
             except ImportError:
-                print("local_whisper function not found in local_transcribe.py")
+                print("local_whisper not found.")
                 return
-            segments, detected_lang = local_whisper(processed_audio, transcript_path)
         elif transcription_method == 3:
             if forced_lang is None:
                 raise ValueError("Forced language code must be provided for transcription_method 3.")
             segments, detected_lang = transcribe_audio(processed_audio, transcript_path, language_code=forced_lang)
         else:
             raise ValueError("Invalid transcription_method.")
+
         if segments is None or detected_lang is None:
             print("Error: Transcription failed.")
             return
+
+        # —— RENAME to include detected language ——
+        lang = detected_lang if isinstance(detected_lang, str) else "unknown"
+        new_name = f"original_{base_name}_{lang}.vtt"
+        new_path = os.path.join("transcripts", new_name)
+        try:
+            os.rename(transcript_path, new_path)
+            transcript_path = new_path
+            print(f"Renamed transcript to: {new_name}")
+        except Exception as e:
+            print(f"Warning: could not rename transcript file: {e}")
+
     elif transcribe_flag == 0:
         if audio_method != 3:
             raise ValueError("Transcription skipped but input is not a subtitle file.")
     else:
-        raise ValueError("Invalid transcribe flag value.")
+        raise ValueError("Invalid transcribe_flag value.")
 
-    # Translation step (if requested)
+    # Step 3: translation
     if translate_flag and segments and detected_lang:
         translate_vtt(segments, detected_lang, target_lang="en", audio_file=processed_audio)
     else:
@@ -309,32 +312,29 @@ def process_audio(
 # ---------------------
 def main():
     parser = argparse.ArgumentParser(
-        description="Command-line tool to process video, audio, or subtitle files for transcription and/or translation."
+        description="Tool to process video/audio/subtitle files for transcription and translation."
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--file", type=str, help="Path to an input file (video, MP3, or VTT)")
-    group.add_argument("--dir", type=str, help="Directory containing video files (MP4/MOV) to process")
+    group.add_argument("--dir", type=str, help="Directory containing video files to process")
     group.add_argument("--youtube", type=str, help="YouTube or audio URL to download and process")
-    # Flags to specify type of input file
-    parser.add_argument("--vtt", action="store_true", help="Input file is a VTT subtitle file (translation only; ignores local flag)")
+
+    parser.add_argument("--vtt", action="store_true", help="Input file is a VTT subtitle file (translation only)")
     parser.add_argument("--mp3", action="store_true", help="Input file is an MP3 file")
-    # Processing options
-    parser.add_argument("--local", "-l", action="store_true", help="Run local Whisper transcription (ignored if --vtt is used)")
-    parser.add_argument("--translate", "-t", action="store_true", help="Include translation API call and generate translated VTT")
-    parser.add_argument("--lang", type=str, help="Forced language code (e.g., 'en', 'es') for transcription")
+    parser.add_argument("--local", "-l", action="store_true", help="Run local Whisper transcription")
+    parser.add_argument("--translate", "-t", action="store_true", help="Also translate to English")
+    parser.add_argument("--lang", type=str, help="Forced language code for transcription")
+
     args = parser.parse_args()
 
-    # Determine the transcription method.
-    # If forced language is provided, we use transcription_method 3.
+    # Decide transcription method
     if args.lang:
         transcription_method = 3
         forced_lang = args.lang
     else:
-        # Use local transcription if --local is provided; otherwise, default to API.
         transcription_method = 2 if args.local else 1
         forced_lang = None
 
-    # Process based on the input source.
     if args.youtube:
         process_audio(
             audio_method=1,
@@ -345,7 +345,6 @@ def main():
             forced_lang=forced_lang
         )
     elif args.vtt:
-        # For subtitles, translation is implicit.
         process_audio(
             audio_method=3,
             vtt_file=args.file,
@@ -362,14 +361,12 @@ def main():
             forced_lang=forced_lang
         )
     elif args.dir:
-        # Process all .mp4 and .mov files in the provided directory.
-        directory = args.dir
         video_extensions = ("*.mp4", "*.mov")
         files = []
         for ext in video_extensions:
-            files.extend(glob.glob(os.path.join(directory, ext)))
+            files.extend(glob.glob(os.path.join(args.dir, ext)))
         if not files:
-            print(f"No video files found in directory: {directory}")
+            print(f"No video files found in directory: {args.dir}")
             sys.exit(1)
         for file_path in files:
             print(f"\nProcessing file: {file_path}")
@@ -382,7 +379,6 @@ def main():
                 forced_lang=forced_lang
             )
     else:
-        # Default: process a single file. Assume it's a video unless other flags are provided.
         process_audio(
             audio_method=0,
             audio_file=args.file,
