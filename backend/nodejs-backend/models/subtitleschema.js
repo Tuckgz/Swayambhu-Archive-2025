@@ -1,7 +1,5 @@
 import mongoose from "mongoose";
 
-
-// using mongoose to create a schema for the srt or vtt files in mongodb
 const subtitleFileSchema = new mongoose.Schema({
   title: { type: String, required: true },           // filename without extension
   filename: { type: String, required: true },        // full filename with extension
@@ -15,10 +13,15 @@ const subtitleFileSchema = new mongoose.Schema({
   date_added: { type: Date, default: Date.now }     
 });
 
-// allows for mongoDB indexing making our database wide word search queries faster
+
+// transcripts: {
+//   en: { type: String, required: true },               
+//   ne: { type: String, default: "" },                 
+  
+// },
+
 subtitleFileSchema.index({ content: "text" })
 
 
-//connection point, will create one if one does not exist
 const subtitleFile = mongoose.model("SRTFile", subtitleFileSchema);
 export default subtitleFile;
