@@ -1,5 +1,5 @@
-import express from "express"
-import subtitleFile from "../models/subtitleschema.js"
+import express from "express";
+import subtitleFile from "../models/subtitleschema.js";
 
 const router = express.Router();
 
@@ -8,14 +8,18 @@ const getSubtitleFile = async (req, res) => {
         const { name } = req.params;
         const { search } = req.query;
         console.log("Requested file:", name);
-        const subFile = await subtitleFile.findOne({ name });
 
+        let subFile = await subtitleFile.findOne({ filename: name });
         if (!subFile) {
-            return res.status(404).json({ error: "File not found 2" });
+            subFile = await subtitleFile.findOne({ title: name });
         }
 
-        if(search) {
-            const lines = subFile.content.split("\n");
+        if (!subFile) {
+            return res.status(404).json({ error: "File not found" });
+        }
+
+        if (search) {
+            const lines = subFile.transcript_en.split("\n");
             const results = [];
 
             for (let i = 0; i < lines.length; i++) {
@@ -38,10 +42,12 @@ const getSubtitleFile = async (req, res) => {
         res.json(subFile);
 
     } catch (error) {
-        res.status(500).json({ error: "Error" });
-      }
+        console.error("Error retrieving subtitle file:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
 };
 
 router.get("/:name", getSubtitleFile);
 
 export default router;
+
