@@ -2,20 +2,20 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from pymongo import MongoClient
-from bson.objectid import ObjectId
+from bson.objectid import ObjectId # Needed for working with MongoDB document IDs
 import os
 import re
 import datetime
 import subprocess
 import glob
 import requests
-from datetime import datetime as dt
+from datetime import datetime as dt # Keep datetime as dt for consistency
 from dotenv import load_dotenv
-import yt_dlp as youtube_dl # Import yt_dlp directly
-from google.cloud import translate_v2 as translate # Import google translate
-import time # Keep for potential future retry logic if needed
-from collections import Counter # Import Counter for keyword extraction
-import traceback # For logging full tracebacks
+import yt_dlp as youtube_dl
+from google.cloud import translate_v2 as translate
+import time
+from collections import Counter
+import traceback
 
 load_dotenv()
 
@@ -25,17 +25,14 @@ CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 
 # --- Constants ---
 AUDIO_DIR = "audio_files"
-TRANSCRIPTS_DIR = "transcripts" # We still need this to *write* the VTTs temporarily
+TRANSCRIPTS_DIR = "transcripts"
 
 # ------------------------------------------------------
 # Set up Google Translate credentials and OpenAI API key.
-# Ensure the path to your Google Cloud credentials JSON file is correct
 try:
-    # Use expanduser to handle '~' if present
     google_creds_path = os.path.expanduser(
         # --- !!! UPDATE THIS PATH TO YOUR CREDENTIALS FILE !!! ---
         "/Users/tuckr/APIs/Google Cloud/swayambhu-451702-e759a9ee59ab.json"
-        # Example alternative: os.path.join(os.path.expanduser("~"), ".config", "gcloud", "application_default_credentials.json")
     )
     if not os.path.exists(google_creds_path):
         raise FileNotFoundError(f"Google Cloud credentials not found at: {google_creds_path}")
@@ -49,7 +46,7 @@ except FileNotFoundError as e:
 except Exception as e:
     print(f"Error initializing Google Translate client: {e}")
     print("Google Translate features will be disabled.")
-    google_client = None # Indicate that the client is not available
+    google_client = None
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
@@ -62,28 +59,40 @@ if not OPENAI_API_KEY:
 mongodb_uri = os.getenv("MONGODB_URI")
 if not mongodb_uri:
     print("Error: MONGODB_URI environment variable not set.")
-    exit(1) # Exit if DB connection is essential
+    exit(1)
 
-print(f"Attempting to connect to MongoDB at: {mongodb_uri.split('@')[-1] if '@' in mongodb_uri else mongodb_uri}") # Mask credentials in log
+print(f"Attempting to connect to MongoDB at: {mongodb_uri.split('@')[-1] if '@' in mongodb_uri else mongodb_uri}")
 try:
     client = MongoClient(mongodb_uri)
-    # The ismaster command is cheap and does not require auth. Checks connectivity.
     client.admin.command('ismaster')
     print("MongoDB connection successful.")
-    # --- Choose your Database and Collection ---
-    db = client["transcript_db"] # Example DB name
-    collection = db["media_transcripts"] # Example Collection name
+    db = client["transcript_db"]
+    collection = db["media_transcripts"]
 except Exception as e:
     print(f"Error connecting to MongoDB: {e}")
-    exit(1) # Exit if DB connection is essential
+    exit(1)
 # ------------------------------------------------------
 
 # Create necessary directories if they don't exist
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(TRANSCRIPTS_DIR, exist_ok=True)
 
+# ------------------------------------------------------------
+# Define allowed search fields (matching frontend for validation)
+# Consider keeping this in sync with your frontend ManageContentCard.tsx
+# ------------------------------------------------------------
+allowed_search_fields = [
+    "title",
+    "source_location",
+    "keywords",
+    "speaker",
+    "job_id",
+    # Add more fields if needed, matching frontend searchFields
+]
+
+
 # ---------------------
-# TEST DB INSERT ROUTE
+# TEST DB INSERT ROUTE (from part 1)
 # ---------------------
 @app.route("/api/test-db", methods=["POST"])
 def test_db_insert():
@@ -106,8 +115,212 @@ def test_db_insert():
             "message": f"An internal server error occurred: {e}"
         }), 500
 
+
+# ------------------------------------------------------------
+# --- NEW ENDPOINT: Search Content ---
+# ------------------------------------------------------------
+@app.route("/api/search-content", methods=["GET"])
+def search_content():
+    """
+    Searches for content items in the database based on a field and query.
+    Supports searching by: title, source_location, keywords, speaker, job_id.
+    Returns a list of matching content items.
+    """
+    field = request.args.get("field")
+    query = request.args.get("query")
+
+    if not field or not query:
+        return jsonify({"status": "error", "message": "Missing 'field' or 'query' parameters"}), 400
+
+    # Ensure the requested field is one of the allowed search fields
+    if field not in allowed_search_fields:
+         return jsonify({"status": "error", "message": f"Invalid search field: {field}"}), 400
+
+    # Build the search query for MongoDB
+    mongo_query = {}
+    search_term = query.strip()
+
+    if not search_term:
+         return jsonify({"status": "error", "message": "Search query cannot be empty"}), 400
+
+    try:
+        if field == 'job_id':
+            # Exact match for job_id
+            mongo_query = {field: search_term}
+        elif field == 'keywords':
+            # For keywords (an array), search if the array *contains* the search term.
+            # This performs an exact match check against array elements.
+            # If you need substring search within keywords, you might use a text index
+            # or iterate through the array with regex ($elemMatch + $regex), but the latter can be slow.
+            mongo_query = {field: search_term}
+        elif field in ['title', 'source_location', 'speaker']:
+             # Case-insensitive substring search for string fields
+             mongo_query = {field: {"$regex": search_term, "$options": "i"}}
+        # Add other field types/search logic here if needed (e.g., exact match for category, language)
+        # elif field == 'category':
+        #      mongo_query = {field: search_term} # Exact match for category
+
+        app.logger.info(f"Executing search query: {mongo_query}")
+
+        # Execute the query
+        # Use a limit to prevent fetching too many results, can add pagination later
+        # Also sort to get a consistent order, e.g., by date added descending
+        results = list(collection.find(mongo_query).sort("date_added", -1).limit(100)) # Limit to 100 results, sort by date
+
+        # Prepare results for JSON response
+        # Convert ObjectId to string and handle potential nulls
+        # Ensure all expected fields from ContentItem are present, even if null, for frontend typing
+        content_list = []
+        for doc in results:
+            # Create a dictionary mirroring the ContentItem structure expected by the frontend
+            item = {
+                '_id': str(doc.get('_id')),
+                'job_id': doc.get('job_id'),
+                'title': doc.get('title'),
+                'url': doc.get('url'),
+                'source_location': doc.get('source_location'),
+                'source_type': doc.get('source_type'),
+                'speaker': doc.get('speaker'),
+                'location': doc.get('location'),
+                'category': doc.get('category'),
+                'keywords': doc.get('keywords', []), # Ensure keywords is always a list, default to empty
+                'detected_language': doc.get('detected_language'),
+                # Convert datetime objects to ISO format strings
+                'date_added': doc.get('date_added').isoformat() if isinstance(doc.get('date_added'), datetime.datetime) else doc.get('date_added'),
+                'last_updated': doc.get('last_updated').isoformat() if isinstance(doc.get('last_updated'), datetime.datetime) else doc.get('last_updated'),
+                'processing_info': doc.get('processing_info', {}) # Ensure processing_info is an object, default to empty
+                # Add other fields from your schema here that the frontend expects
+            }
+            content_list.append(item)
+
+        app.logger.info(f"Found {len(results)} results for query '{query}' in field '{field}'")
+        return jsonify(content_list), 200
+
+    except Exception as e:
+        app.logger.error(f"Error during search: {e}\n{traceback.format_exc()}")
+        return jsonify({"status": "error", "message": "An internal server error occurred during search"}), 500
+
+# ------------------------------------------------------------
+# --- NEW ENDPOINT: Update Content ---
+# ------------------------------------------------------------
+@app.route("/api/update-content/<string:doc_id>", methods=["PUT"])
+def update_content(doc_id):
+    """
+    Updates a specific content item in the database.
+    Expects JSON payload with fields to update (matching frontend EditFormData structure,
+    but keywords should be string[] in payload).
+    """
+    if not request.is_json:
+        return jsonify({"status": "error", "message": "Request must be JSON"}), 415
+
+    update_data = request.get_json()
+
+    if not isinstance(update_data, dict):
+        return jsonify({"status": "error", "message": "Invalid data format, expected JSON object"}), 400
+
+    if not doc_id:
+        # This check is mostly redundant due to the route definition but harmless
+        return jsonify({"status": "error", "message": "Document ID not provided in URL"}), 400
+
+    try:
+        # Convert doc_id string to MongoDB ObjectId
+        object_id = ObjectId(doc_id)
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid Document ID format"}), 400
+
+    # Prepare the update document using $set
+    # Use the received JSON data directly for $set.
+    # The frontend is responsible for sending the correct format (e.g., keywords as string[]).
+    update_document = {"$set": update_data}
+
+    # Always update the last_updated timestamp
+    update_document["$set"]["last_updated"] = dt.now()
+
+    # Ensure required fields like job_id, source_location, source_type are not accidentally removed
+    # by the update if they weren't included in the frontend payload.
+    # A more robust approach might merge existing data with update_data,
+    # but assuming frontend only sends editable fields, $set is fine if non-editable
+    # fields are not present in update_data. Let's add a check/logging for safety.
+    non_editable_required_fields = ['job_id', 'source_location', 'source_type']
+    for field in non_editable_required_fields:
+        if field in update_data:
+            # This shouldn't happen if frontend only sends editable fields, but log if it does
+            app.logger.warning(f"Received unexpected non-editable field '{field}' in update payload for {doc_id}.")
+            # Optionally remove it from update_data if you strictly forbid updating these
+            # del update_data[field]
+            # Or let $set update it if it's harmless (e.g., rewriting same value)
+
+    app.logger.info(f"Attempting to update document ID: {doc_id} with data: {update_data}")
+
+    try:
+        # Perform the update operation
+        result = collection.update_one({"_id": object_id}, update_document)
+
+        if result.matched_count == 0:
+            return jsonify({"status": "error", "message": f"Document with ID {doc_id} not found"}), 404
+        elif result.modified_count == 0:
+             # Matched but not modified - data was likely identical
+             app.logger.info(f"Document ID {doc_id} matched but not modified.")
+             # Fetch and return the current document state
+             updated_doc = collection.find_one({"_id": object_id})
+             if updated_doc:
+                 # Format the document for the frontend response
+                  item = {
+                    '_id': str(updated_doc.get('_id')),
+                    'job_id': updated_doc.get('job_id'),
+                    'title': updated_doc.get('title'),
+                    'url': updated_doc.get('url'),
+                    'source_location': updated_doc.get('source_location'),
+                    'source_type': updated_doc.get('source_type'),
+                    'speaker': updated_doc.get('speaker'),
+                    'location': updated_doc.get('location'),
+                    'category': updated_doc.get('category'),
+                    'keywords': updated_doc.get('keywords', []),
+                    'detected_language': updated_doc.get('detected_language'),
+                    'date_added': updated_doc.get('date_added').isoformat() if isinstance(updated_doc.get('date_added'), datetime.datetime) else updated_doc.get('date_added'),
+                    'last_updated': updated_doc.get('last_updated').isoformat() if isinstance(updated_doc.get('last_updated'), datetime.datetime) else updated_doc.get('last_updated'),
+                    'processing_info': updated_doc.get('processing_info', {})
+                  }
+                  return jsonify(item), 200
+             else:
+                  app.logger.warning(f"Document ID {doc_id} matched but not found when attempting to retrieve after no modification.")
+                  return jsonify({"status": "warning", "message": f"Document with ID {doc_id} matched but could not be retrieved after no modification."}), 404
+
+        else: # Successfully modified (result.modified_count > 0)
+            app.logger.info(f"Document ID {doc_id} updated successfully ({result.modified_count} modified).")
+            # Fetch and return the updated document to ensure frontend state is correct
+            updated_doc = collection.find_one({"_id": object_id})
+            if updated_doc:
+                 # Format the document for the frontend response
+                 item = {
+                    '_id': str(updated_doc.get('_id')),
+                    'job_id': updated_doc.get('job_id'),
+                    'title': updated_doc.get('title'),
+                    'url': updated_doc.get('url'),
+                    'source_location': updated_doc.get('source_location'),
+                    'source_type': updated_doc.get('source_type'),
+                    'speaker': updated_doc.get('speaker'),
+                    'location': updated_doc.get('location'),
+                    'category': updated_doc.get('category'),
+                    'keywords': updated_doc.get('keywords', []),
+                    'detected_language': updated_doc.get('detected_language'),
+                    'date_added': updated_doc.get('date_added').isoformat() if isinstance(updated_doc.get('date_added'), datetime.datetime) else updated_doc.get('date_added'),
+                    'last_updated': updated_doc.get('last_updated').isoformat() if isinstance(updated_doc.get('last_updated'), datetime.datetime) else updated_doc.get('last_updated'),
+                    'processing_info': updated_doc.get('processing_info', {})
+                 }
+                 return jsonify(item), 200
+            else:
+                app.logger.error(f"Document ID {doc_id} modified but could not be retrieved after update.")
+                return jsonify({"status": "error", "message": f"Document with ID {doc_id} updated but failed to retrieve."}), 500
+
+
+    except Exception as e:
+        app.logger.error(f"Error during update for document ID {doc_id}: {e}\n{traceback.format_exc()}")
+        return jsonify({"status": "error", "message": "An internal server error occurred during update"}), 500
+
+
 # ---------------------
-# Helper Functions
+# Helper Functions (from part 1 and 2)
 # ---------------------
 def get_timestamp():
     """Returns the current timestamp in YYYYMMDD_HHMMSS format."""
@@ -150,7 +363,7 @@ def safe_delete(file_path):
         print(f"Unexpected error deleting file {file_path}: {e}")
 
 # ---------------------
-# MEDIA PROCESSING FUNCTIONS
+# MEDIA PROCESSING FUNCTIONS (from part 1)
 # ---------------------
 def extract_audio_from_video(input_path, output_dir=AUDIO_DIR):
     """Extracts audio from a video file using ffmpeg."""
@@ -159,7 +372,7 @@ def extract_audio_from_video(input_path, output_dir=AUDIO_DIR):
 
     base_name = os.path.splitext(os.path.basename(input_path))[0]
     sanitized_base_name = sanitize_filename(base_name)
-    timestamp = get_timestamp()
+    timestamp = get_timestamp() # Re-generate timestamp here for filename uniqueness if needed, or use one from main function
     output_audio_filename = f"{sanitized_base_name}_{timestamp}.mp3"
     output_audio_path = os.path.join(output_dir, output_audio_filename)
 
@@ -168,7 +381,6 @@ def extract_audio_from_video(input_path, output_dir=AUDIO_DIR):
         "-ar", "44100", "-ac", "2", "-loglevel", "error", output_audio_path
     ]
     try:
-        # Added capture_output=True for better error reporting if needed
         process = subprocess.run(command, check=True, capture_output=True, text=True)
         print(f"Audio extracted successfully to: {output_audio_path}")
         return output_audio_path
@@ -176,52 +388,47 @@ def extract_audio_from_video(input_path, output_dir=AUDIO_DIR):
         print("Error: 'ffmpeg' command not found. Install ffmpeg and ensure it's in PATH.")
         raise
     except subprocess.CalledProcessError as e:
-        print(f"ffmpeg error during audio extraction: {e.stderr}") # Print stderr
+        print(f"ffmpeg error during audio extraction: {e.stderr}")
         safe_delete(output_audio_path)
         raise RuntimeError(f"ffmpeg failed: {e.stderr}") from e
 
 def download_youtube_audio(url, output_dir=AUDIO_DIR):
     """Downloads audio from a YouTube URL using yt-dlp."""
-    timestamp = get_timestamp()
-    # Ensure filename template doesn't contain illegal characters before sanitization
-    # Using a temporary generic name pattern first, then renaming based on title
+    timestamp = get_timestamp() # Re-generate timestamp here
     temp_output_template = os.path.join(output_dir, f"youtube_download_{timestamp}.%(ext)s")
 
-    # --- Find ffmpeg path automatically if possible ---
     ffmpeg_location = None
     try:
-        # Check common paths or use 'which'/'where'
         result = subprocess.run(['which', 'ffmpeg'], capture_output=True, text=True, check=False)
         if result.returncode == 0:
             ffmpeg_location = result.stdout.strip()
             print(f"Found ffmpeg at: {ffmpeg_location}")
-        else: # Try common brew path on mac
-             brew_path = '/opt/homebrew/bin/ffmpeg'
+        else:
+             brew_path = '/opt/homebrew/bin/ffmpeg' # Common path on macOS Homebrew
              if os.path.exists(brew_path):
                  ffmpeg_location = brew_path
                  print(f"Using ffmpeg at: {ffmpeg_location}")
     except FileNotFoundError:
-        pass # 'which' command might not be available
+        pass
 
     if not ffmpeg_location:
-        print("Warning: ffmpeg location not found automatically. Ensure it's installed and in PATH or set 'ffmpeg_location' manually.")
+        print("Warning: ffmpeg location not found automatically. Ensure it's installed and in PATH or set 'ffmpeg_location' manually in download_youtube_audio.")
 
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': temp_output_template, # Use temporary template
+        'outtmpl': temp_output_template,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
         'noplaylist': True,
-        'quiet': False, # Set to False for more verbose output if debugging
+        'quiet': False,
         'no_warnings': True,
-        'restrictfilenames': True, # Helps yt-dlp avoid problematic chars, but we sanitize too
-        'writethumbnail': False, # Don't need thumbnail
-        'keepvideo': False, # Don't keep original video format
+        'restrictfilenames': True,
+        'writethumbnail': False,
+        'keepvideo': False,
     }
-    # Only add ffmpeg_location if found
     if ffmpeg_location:
         ydl_opts['ffmpeg_location'] = ffmpeg_location
 
@@ -232,9 +439,8 @@ def download_youtube_audio(url, output_dir=AUDIO_DIR):
     try:
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
             print(f"Starting YouTube download for: {url}")
-            info = ydl.extract_info(url, download=True) # Download happens here
+            info = ydl.extract_info(url, download=True)
 
-            # Get the actual path of the downloaded *audio* file (after postprocessing)
             downloaded_audio_search_pattern = os.path.join(output_dir, f"youtube_download_{timestamp}.mp3")
             matching_files = glob.glob(downloaded_audio_search_pattern)
 
@@ -246,33 +452,29 @@ def download_youtube_audio(url, output_dir=AUDIO_DIR):
             else:
                 downloaded_file_path = matching_files[0]
 
-            # Now rename the downloaded file using the sanitized title
             downloaded_title = info.get('title', 'youtube_audio')
-            source_title_base = sanitize_filename(downloaded_title) # Sanitize title for base name
+            source_title_base = sanitize_filename(downloaded_title)
             final_audio_filename = f"{source_title_base}_{timestamp}.mp3"
             final_audio_path = os.path.join(output_dir, final_audio_filename)
 
-            # Rename the file
             os.rename(downloaded_file_path, final_audio_path)
             print(f"YouTube audio downloaded and renamed to: {final_audio_path}")
-            print(f"Base name for VTT: {source_title_base}") # Title base is used for VTT base
+            print(f"Base name for VTT: {source_title_base}")
             return final_audio_path, source_title_base
 
     except youtube_dl.utils.DownloadError as e:
         print(f"yt-dlp download error: {e}")
-        # Clean up partially downloaded file if rename didn't happen
         safe_delete(downloaded_file_path)
         raise RuntimeError(f"Failed to download/process YouTube URL: {url}") from e
     except Exception as e:
         print(f"An unexpected error occurred during YouTube download: {e}")
-        # Clean up partially downloaded or renamed file
         safe_delete(downloaded_file_path)
         safe_delete(final_audio_path)
         raise
 
 
 # ---------------------
-# TRANSCRIPTION FUNCTIONS
+# TRANSCRIPTION FUNCTIONS (from part 1)
 # ---------------------
 def transcribe_audio(audio_path, transcript_output_path, local=False):
     """Transcribes audio using OpenAI Whisper (API or local), saves VTT."""
@@ -284,7 +486,6 @@ def transcribe_audio(audio_path, transcript_output_path, local=False):
 
     if local:
         try:
-            # Check if whisper is importable first
             try:
                 import whisper
             except ImportError:
@@ -293,10 +494,9 @@ def transcribe_audio(audio_path, transcript_output_path, local=False):
                 return None, None
 
             print("Loading local Whisper model (using 'base', consider size vs performance)...")
-            # Consider making model size configurable via env var or parameter
-            model = whisper.load_model("base")
+            model = whisper.load_model("base") # Model size can be configurable
             print("Starting local transcription...")
-            result = model.transcribe(audio_path, word_timestamps=True, verbose=False) # verbose=False for cleaner logs
+            result = model.transcribe(audio_path, word_timestamps=True, verbose=False)
             print("Local transcription finished.")
 
             detected_language = result.get("language", "unknown")
@@ -304,8 +504,7 @@ def transcribe_audio(audio_path, transcript_output_path, local=False):
 
             if not segments:
                 print("Warning: Local Whisper transcription returned no segments.")
-                # Still return language if detected, but segments is empty
-                return [], detected_language # Return empty list for segments
+                return [], detected_language
 
             vtt_lines = ["WEBVTT", ""]
             for segment in segments:
@@ -321,7 +520,7 @@ def transcribe_audio(audio_path, transcript_output_path, local=False):
         except Exception as e:
             print(f"Local Whisper transcription error: {e}")
             safe_delete(transcript_output_path)
-            return None, None # Indicate failure
+            return None, None
     else:
         # --- OpenAI API Whisper Transcription ---
         if not OPENAI_API_KEY:
@@ -339,16 +538,14 @@ def transcribe_audio(audio_path, transcript_output_path, local=False):
             max_size = 25 * 1024 * 1024 # 25 MB limit
             if file_size > max_size:
                  print(f"Error: Audio file size ({file_size / (1024*1024):.2f} MB) exceeds OpenAI 25MB limit.")
-                 # Consider implementing chunking/splitting here for larger files if needed
                  return None, None
 
             print(f"Starting OpenAI API transcription for {os.path.basename(audio_path)}...")
             with open(audio_path, "rb") as audio_file:
                 files["file"] = (os.path.basename(audio_path), audio_file)
-                # Increased timeout, Whisper API can be slow
                 response = requests.post(
                     "https://api.openai.com/v1/audio/transcriptions",
-                    headers=headers, files=files, data=data, timeout=600 # 10 min timeout
+                    headers=headers, files=files, data=data, timeout=600
                 )
             print(f"OpenAI API response status: {response.status_code}")
 
@@ -359,8 +556,7 @@ def transcribe_audio(audio_path, transcript_output_path, local=False):
 
                 if not segments:
                      print("Warning: OpenAI API transcription returned no segments.")
-                     safe_delete(transcript_output_path) # Clean up empty temp file
-                     # Return empty list for segments, but potentially detected language
+                     safe_delete(transcript_output_path)
                      return [], detected_language
 
                 vtt_lines = ["WEBVTT", ""]
@@ -368,7 +564,6 @@ def transcribe_audio(audio_path, transcript_output_path, local=False):
                     start_sec = segment.get("start")
                     end_sec = segment.get("end")
                     text = segment.get("text", "").strip()
-                    # Ensure timestamps exist before adding segment
                     if start_sec is not None and end_sec is not None and text:
                         start_time = format_vtt_timestamp(start_sec)
                         end_time = format_vtt_timestamp(end_sec)
@@ -376,11 +571,10 @@ def transcribe_audio(audio_path, transcript_output_path, local=False):
                     else:
                         print(f"Warning: Skipping segment with missing timestamp or text: {segment}")
 
-                # Check if any valid lines were added besides the header
                 if len(vtt_lines) <= 2:
                     print("Warning: No valid segments with timestamps found after processing.")
                     safe_delete(transcript_output_path)
-                    return [], detected_language # Return empty list
+                    return [], detected_language
 
                 with open(transcript_output_path, "w", encoding="utf-8") as file:
                     file.write("\n".join(vtt_lines))
@@ -389,8 +583,8 @@ def transcribe_audio(audio_path, transcript_output_path, local=False):
             else:
                 error_details = response.text
                 print(f"OpenAI API Error: {response.status_code} - {error_details}")
-                safe_delete(transcript_output_path) # Clean up failed attempt
-                return None, None # Indicate failure
+                safe_delete(transcript_output_path)
+                return None, None
 
         except requests.exceptions.Timeout:
              print(f"Network Timeout during OpenAI API request after 600 seconds.")
@@ -403,13 +597,12 @@ def transcribe_audio(audio_path, transcript_output_path, local=False):
         except Exception as e:
             print(f"Error during OpenAI API transcription processing: {e}")
             safe_delete(transcript_output_path)
-            return None, None # Indicate failure
+            return None, None
 
-    # Ensure we return segments (even if empty) and language if transcription was initiated
     return segments, detected_language
 
 # ---------------------
-# TRANSLATION FUNCTIONS
+# TRANSLATION FUNCTIONS (from part 1)
 # ---------------------
 def translate_vtt_segments(segments, target_lang, base_vtt_filename, output_dir=TRANSCRIPTS_DIR):
     """Translates VTT segments using Google Translate and saves a new VTT file."""
@@ -417,11 +610,10 @@ def translate_vtt_segments(segments, target_lang, base_vtt_filename, output_dir=
         print("Error: Google Translate client not available. Skipping translation.")
         return None
 
-    if not segments: # Handle empty segments list gracefully
+    if not segments:
         print("Warning: No segments provided for translation. Skipping.")
         return None
 
-    # Extract text ensuring segment["text"] exists and is not empty/whitespace
     texts_to_translate = [segment["text"].strip() for segment in segments if segment.get("text", "").strip()]
 
     if not texts_to_translate:
@@ -431,57 +623,45 @@ def translate_vtt_segments(segments, target_lang, base_vtt_filename, output_dir=
     translated_texts = []
     try:
         print(f"Attempting translation of {len(texts_to_translate)} non-empty segments to '{target_lang}'...")
-        # Google Translate API can handle lists directly
-        # Add a small delay/retry mechanism if hitting quotas frequently
         results = google_client.translate(texts_to_translate, target_language=target_lang)
         translated_texts = [result['translatedText'] for result in results]
         print("Translation successful.")
-    except Exception as e: # Catch potential Google API errors
+    except Exception as e:
         print(f"Error during Google Translate API call: {e}")
-        # Log more details if possible e.g., str(e)
-        # Consider adding specific exception handling for common Google API errors if needed
-        return None # Indicate translation failure
+        return None
 
     if len(translated_texts) != len(texts_to_translate):
          print(f"Warning: Mismatch in count between non-empty original segments ({len(texts_to_translate)}) and translated texts ({len(translated_texts)}). This might indicate partial failure.")
-         # Decide how to handle this - proceed with partial results or fail? For now, proceed.
+
 
     translated_vtt_filename = f"{base_vtt_filename}_transcription_{target_lang}.vtt"
     translated_vtt_path = os.path.join(output_dir, translated_vtt_filename)
 
     vtt_lines = ["WEBVTT", ""]
     translation_idx = 0
-    original_text_idx = 0
-    for segment in segments: # Iterate through original segments to maintain timing
+    for segment in segments:
         start_sec = segment.get("start")
         end_sec = segment.get("end")
         original_text = segment.get("text", "").strip()
 
-        # Only process segments that had valid timestamps originally
         if start_sec is None or end_sec is None:
             continue
 
         start_time = format_vtt_timestamp(start_sec)
         end_time = format_vtt_timestamp(end_sec)
 
-        # Check if the original text was non-empty (and thus should have a translation)
         if original_text:
             if translation_idx < len(translated_texts):
                 translated_text = translated_texts[translation_idx]
                 vtt_lines.extend([f"{start_time} --> {end_time}", translated_text, ""])
                 translation_idx += 1
             else:
-                # This case occurs if translation count mismatch happened
                 print(f"Warning: Missing translation for segment (originally '{original_text[:30]}...'): {start_time} --> {end_time}")
-                # Optionally add placeholder or skip? Adding placeholder for now.
                 vtt_lines.extend([f"{start_time} --> {end_time}", "[Translation Failed]", ""])
-            original_text_idx += 1 # Increment only when we process a segment that had text
         else:
-            # If original segment had no text, add empty line in translation too
              vtt_lines.extend([f"{start_time} --> {end_time}", "", ""])
 
 
-    # Check if we generated any meaningful content
     if len(vtt_lines) <= 2:
         print(f"Warning: No valid translated segments generated for {target_lang}. Skipping file write.")
         return None
@@ -490,15 +670,14 @@ def translate_vtt_segments(segments, target_lang, base_vtt_filename, output_dir=
         with open(translated_vtt_path, "w", encoding="utf-8") as f:
             f.write("\n".join(vtt_lines))
         print(f"Generated translation VTT: {translated_vtt_path}")
-        return translated_vtt_path # Return the full path
+        return translated_vtt_path
     except IOError as e:
         print(f"Error writing translated VTT file {translated_vtt_path}: {e}")
         return None
 
 
 # ------------------------------------------------------------
-# HELPER FOR METADATA: Extract Text from VTT String
-# (Copied from Part 2)
+# HELPER FOR METADATA: Extract Text from VTT String (from part 2)
 # ------------------------------------------------------------
 def extract_text_from_vtt_string(vtt_content_string):
     """Reads VTT content string and extracts only the spoken text blocks."""
@@ -506,57 +685,45 @@ def extract_text_from_vtt_string(vtt_content_string):
         return ""
     lines = vtt_content_string.strip().splitlines()
     text_content = []
-    # More robust VTT parsing: look for lines *after* a timestamp line
     potential_text_line = False
     for line in lines:
         line = line.strip()
         if line == "" or line.startswith("WEBVTT") or line.startswith("NOTE") or line.startswith("STYLE"):
-            potential_text_line = False # Reset if blank or header
+            potential_text_line = False
             continue
-        # Basic timestamp check - assumes standard format
         if re.match(r'^\d{2}:\d{2}:\d{2}\.\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}\.\d{3}', line):
-            potential_text_line = True # Line(s) after this might be text
+            potential_text_line = True
             continue
         if potential_text_line:
-            # Assume this line is text until we hit another timestamp or blank line
-            # We check again if it looks like a timestamp line itself to avoid multi-line captions being wrongly concatenated
             if not re.match(r'^\d{2}:\d{2}:\d{2}\.\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}\.\d{3}', line):
                  text_content.append(line)
             else:
-                 potential_text_line = False # Hit another timestamp, reset
+                 potential_text_line = False
 
     return " ".join(text_content)
 
 # ------------------------------------------------------------
-# HELPER FOR METADATA: Keyword Extraction
-# (Copied from Part 2)
+# HELPER FOR METADATA: Keyword Extraction (from part 2)
 # ------------------------------------------------------------
 def extract_keywords_from_text(text, num_keywords=10):
     """Extracts simple keywords based on word frequency."""
     if not text: return []
     try:
-        # Define stopwords (consider enhancing/customizing, loading from file)
         stopwords = set([
-            # English
             "the", "and", "a", "to", "of", "in", "that", "is", "it", "for", "on", "with", "as", "by", "at", "an",
             "this", "or", "be", "are", "was", "were", "i", "you", "he", "she", "we", "they", "my", "your", "his",
             "her", "its", "our", "their", "from", "up", "out", "if", "about", "into", "not", "have", "has", "had",
             "do", "does", "did", "will", "would", "shall", "should", "can", "could", "may", "might", "must", "also",
             "but", "so", "just", "like", "get", "go", "make", "know", "see", "say", "think", "time", "use", "work",
-            " K", " G", " M", " T", " s", " m", " pm", " am", # Common units/abbreviations/times
-            # Nepali (basic - expand significantly for better results)
+            " K", " G", " M", " T", " s", " m", " pm", " am",
             "को", "मा", "छ", "र", "हरु", "यो", "त्यो", "ने", "लागि", "पनि", "एक", "छन्", "गरी", "हो", "के", "छैन",
             "ले", "लाई", "बाट", "त", "भने", "अब", "कि", "संग", "अनि", "गर्नु", "भएको", "भए", "गरेको", "हुन्छ", "तर",
             "यी", "ती", "नै", "जब", "तब", "यहाँ", "त्यहाँ", "कसरी", "किन", "धेरै", "थोरै", "राम्रो", "नराम्रो"
         ])
-        # Find sequences of word characters (letters, numbers, underscore)
-        # Using \w which includes numbers and underscore. Consider [\p{L}\p{N}_] for broader Unicode support if needed.
         words = re.findall(r'\b\w+\b', text.lower())
-        # Filter out stopwords, short words (<= 2 chars), and pure numbers
         filtered_words = [w for w in words if w not in stopwords and len(w) > 2 and not w.isdigit()]
         if not filtered_words: return []
         word_freq = Counter(filtered_words)
-        # Return the most common words
         common_keywords = [word for word, freq in word_freq.most_common(num_keywords)]
         return common_keywords
     except Exception as e:
@@ -565,7 +732,7 @@ def extract_keywords_from_text(text, num_keywords=10):
 
 
 # ------------------------------------------------------------
-# --- MODIFICATION: New Function for Integrated Metadata Generation ---
+# --- Integrated Metadata Generation Function (from part 2) ---
 # ------------------------------------------------------------
 def generate_and_populate_metadata(doc_data):
     """
@@ -576,19 +743,16 @@ def generate_and_populate_metadata(doc_data):
     job_id = doc_data.get("job_id")
     if not job_id:
         print("Warning: Cannot generate metadata without job_id in doc_data.")
-        return # Can't proceed
+        return
 
-    # --- Get VTT content from the doc_data dictionary ---
     transcript_content_map = doc_data.get("transcript_content", {})
     selected_vtt_content = None
     selected_lang = None
 
     if not transcript_content_map:
          print(f"Warning: No transcript content available in doc_data for job_id '{job_id}'. Skipping metadata generation.")
-         return # Nothing to process
+         return
 
-    # --- Select Language for Keyword Extraction ---
-    # Priority: 1. Detected Language, 2. English ('en'), 3. Nepali ('ne'), 4. First available
     detected_lang = doc_data.get("detected_language")
     preferred_langs_order = [detected_lang, 'en', 'ne']
 
@@ -596,15 +760,13 @@ def generate_and_populate_metadata(doc_data):
         if lang and lang in transcript_content_map:
             selected_lang = lang
             selected_vtt_content = transcript_content_map[lang]
-            # Check if content is valid or an error placeholder
             if isinstance(selected_vtt_content, str) and selected_vtt_content.startswith("Error: Could not read file"):
                 print(f"Warning: Content for preferred language '{selected_lang}' is an error message. Trying next.")
-                selected_vtt_content = None # Reset to try next language
+                selected_vtt_content = None
                 selected_lang = None
             else:
-                break # Found valid content
+                break
 
-    # Fallback to the first available language if no preferred language found/valid
     if not selected_lang and transcript_content_map:
         for lang, content in transcript_content_map.items():
              if isinstance(content, str) and not content.startswith("Error: Could not read file"):
@@ -615,46 +777,36 @@ def generate_and_populate_metadata(doc_data):
 
     if not selected_lang or not selected_vtt_content:
         print("Could not select any valid transcript content for keyword extraction. Skipping.")
-        # Ensure keywords field exists but is empty
-        doc_data['keywords'] = doc_data.get('keywords', []) # Use existing if somehow populated, else empty
-        return # Cannot proceed
+        doc_data['keywords'] = doc_data.get('keywords', [])
+        return
 
     print(f"Selected language '{selected_lang}' for keyword extraction.")
 
-    # --- Extract Plain Text ---
     vtt_text_for_keywords = extract_text_from_vtt_string(selected_vtt_content)
     if not vtt_text_for_keywords:
         print("Warning: Could not extract plain text from selected VTT content. Skipping keyword extraction.")
         doc_data['keywords'] = doc_data.get('keywords', [])
         return
 
-    # --- Extract Keywords ---
     keywords = extract_keywords_from_text(vtt_text_for_keywords)
     print(f"Extracted keywords ({len(keywords)}): {keywords}")
 
-    # --- Populate doc_data ---
-    # Add/update the 'keywords' field in the dictionary
     doc_data['keywords'] = keywords
 
-    # --- Placeholder for additional automatic metadata extraction ---
-    # Example: Infer title from first few lines of text (simple approach)
     if not doc_data.get('title') and vtt_text_for_keywords:
-        first_sentence_match = re.match(r"^.*?[.?!]", vtt_text_for_keywords) # Get first sentence
+        first_sentence_match = re.match(r"^.*?[.?!]", vtt_text_for_keywords)
         if first_sentence_match:
             potential_title = first_sentence_match.group(0).strip()
-            if len(potential_title) > 10 and len(potential_title) < 100 : # Basic sanity check
+            if len(potential_title) > 10 and len(potential_title) < 100 :
                 doc_data['title'] = potential_title
                 print(f"Inferred title: {potential_title}")
 
-    # Example: Simple summary (first N words) - USE LLM FOR BETTER RESULTS
     if not doc_data.get('summary') and vtt_text_for_keywords:
          words = vtt_text_for_keywords.split()
          potential_summary = " ".join(words[:50]) + ("..." if len(words) > 50 else "")
          doc_data['summary'] = potential_summary
          print(f"Generated simple summary (first 50 words).")
 
-    # Add more logic here for speaker, location, category detection if needed
-    # Simple regex examples (less reliable than dedicated models):
     if not doc_data.get('location') and vtt_text_for_keywords:
         # Look for patterns like "in Kathmandu", "at Swayambhu" etc.
         loc_match = re.search(r'\b(?:in|at|near)\s+([A-Z][A-Za-z\s\-]+)\b', vtt_text_for_keywords)
@@ -664,18 +816,17 @@ def generate_and_populate_metadata(doc_data):
 
     if not doc_data.get('speaker') and vtt_text_for_keywords:
          # Look for patterns like "Speaker: John Doe", "by Jane Smith"
-        sp_match = re.search(r'\b(?:by|from|speaker[:]?|voiced by)\s+([A-Z][A-Za-z\s\.\-]+)\b', vtt_text_for_keywords) # Look for capitalized names
+        sp_match = re.search(r'\b(?:by|from|speaker[:]?|voiced by)\s+([A-Z][A-Za-z\s\.\-]+)\b', vtt_text_for_keywords)
         if sp_match:
             doc_data['speaker'] = f"Possibly: {sp_match.group(1).strip()}"
             print(f"Inferred speaker: {doc_data['speaker']}")
 
     print(f"--- Finished automatic metadata generation for job: {job_id} ---")
-    # doc_data is modified in place, no need to return it
 
 
-# ---------------------
-# MAIN PROCESSING ENDPOINT (Storing VTT Content)
-# ---------------------
+# ------------------------------------------------------------
+# --- MAIN PROCESSING ENDPOINT (Storing VTT Content) (from part 2) ---
+# ------------------------------------------------------------
 @app.route("/api/generate-transcription", methods=["POST", "OPTIONS"])
 def generate_transcription_endpoint():
     """
@@ -684,12 +835,9 @@ def generate_transcription_endpoint():
     Optionally generates and adds further metadata based on a request parameter.
     """
     if request.method == "OPTIONS":
-        # Handle CORS preflight request
         response = jsonify({"message": "Preflight OK"})
-        # Ensure CORS headers are set correctly for OPTIONS response if not handled globally
         return response, 200
 
-    # --- Initialize variables ---
     source_type = None
     source = None
     original_media_name = None
@@ -701,12 +849,11 @@ def generate_transcription_endpoint():
     processed_audio_path = None
     final_transcript_path = None
     translation_paths = {}
-    doc_data = {} # Initialize doc_data dictionary
+    doc_data = {}
 
     try:
-        timestamp = get_timestamp() # Generate timestamp early
+        timestamp = get_timestamp()
 
-        # --- 1. Determine Input Type and Get Raw Source ---
         if request.is_json:
             data = request.json
             if not data:
@@ -715,7 +862,6 @@ def generate_transcription_endpoint():
             source_type = data.get("source_type", "").lower()
             source = data.get("source", "")
 
-            # Get flags from JSON
             raw_gen_meta = data.get("generate_metadata", False)
             should_generate_metadata = str(raw_gen_meta).lower() == 'true' if isinstance(raw_gen_meta, str) else bool(raw_gen_meta)
             raw_local = data.get("local_transcription", False)
@@ -728,11 +874,10 @@ def generate_transcription_endpoint():
 
             original_media_name = source
 
-        elif request.files: # Multipart Form Data
+        elif request.files:
             source_type = request.form.get("source_type", "").lower()
             source_input = request.files.get("source")
 
-            # Get flags from Form Data
             should_generate_metadata = request.form.get("generate_metadata", 'false').lower() == 'true'
             use_local_whisper = request.form.get("local_transcription", 'false').lower() == 'true'
 
@@ -882,11 +1027,11 @@ def generate_transcription_endpoint():
             "date_added": None,
             "location": None,
             "speaker": None,
-            "category": None, # Renamed 'type' to 'category'
+            "category": None,
             "keywords": [],
             "title": None,
             "summary": None,
-            "last_updated": None, # Will be set before DB write
+            "last_updated": None,
         }
         if content_read_errors:
              doc_data["processing_info"]["content_read_errors"] = content_read_errors
@@ -895,42 +1040,37 @@ def generate_transcription_endpoint():
         if should_generate_metadata:
             print(f"Flag 'generate_metadata' is True. Calling metadata generation function for job: {vtt_base_filename}")
             try:
-                # --- MODIFICATION: Call the integrated metadata generation function ---
                 generate_and_populate_metadata(doc_data) # Modifies doc_data in place
-                # --- End MODIFICATION ---
             except Exception as e:
                 print(f"Error during metadata generation step: {e}")
-                traceback.print_exc() # Log full traceback for metadata errors
-                # Store error in processing info, but don't halt the process
+                traceback.print_exc()
                 doc_data["processing_info"]["metadata_generation_error"] = str(e)
         else:
              print(f"Flag 'generate_metadata' is False. Skipping automatic metadata generation.")
 
         # --- 7. Insert or Update in DB ---
         existing = collection.find_one({"job_id": vtt_base_filename})
-        current_iso_time = dt.now().isoformat()
-        doc_data["last_updated"] = current_iso_time # Set last updated time
+        current_iso_time = dt.now() # Keep as datetime object until final conversion for DB/JSON
+        # Use dt.now().isoformat() only for JSON output, keep datetime objects for DB
+        doc_data["last_updated"] = current_iso_time # Set last updated time as datetime object
 
         if existing:
             print(f"Updating DB entry for job_id: {vtt_base_filename}")
-            # Prepare update payload - basically, update everything except maybe date_added
-            update_payload = doc_data.copy() # Start with all fields from doc_data
+            update_payload = doc_data.copy()
             if "date_added" in update_payload:
-                 del update_payload["date_added"] # Don't overwrite existing date_added on update
+                 del update_payload["date_added"]
 
-            # Use the existing _id for the update query
             update_result = collection.update_one(
                  {"_id": existing["_id"]},
-                 {"$set": update_payload} # Update all fields based on current processing run
+                 {"$set": update_payload}
              )
             db_status = "updated" if update_result.modified_count > 0 else "no change"
             inserted_id = str(existing["_id"])
 
         else:
             print(f"Creating new DB entry for job_id: {vtt_base_filename}")
-            # Set date_added only on initial creation
-            doc_data["date_added"] = current_iso_time
-            insert_result = collection.insert_one(doc_data) # Insert the full doc_data
+            doc_data["date_added"] = current_iso_time # Set date_added as datetime object
+            insert_result = collection.insert_one(doc_data)
             if insert_result.inserted_id:
                  db_status = "created"
                  inserted_id = str(insert_result.inserted_id)
@@ -945,15 +1085,25 @@ def generate_transcription_endpoint():
             safe_delete(path)
 
         # --- 9. Return Success Response ---
+        # Convert datetime objects to ISO strings for the final JSON response
         response_data = {
             "status": db_status,
             "job_id": vtt_base_filename,
             "detected_language": standardized_lang,
             "message": f"Processing complete for {original_media_name}. Status: {db_status}.",
             "inserted_or_updated_id": inserted_id,
-            "transcript_en": db_transcript_content.get('en', '')[:100] + "..." if db_transcript_content.get('en') else "N/A",
-            "transcript_ne": db_transcript_content.get('ne', '')[:100] + "..." if db_transcript_content.get('ne') else "N/A",
-            "filename": original_media_name
+            # Shorten content preview for response
+            "transcript_en_preview": db_transcript_content.get('en', '')[:100] + "..." if isinstance(db_transcript_content.get('en'), str) and db_transcript_content.get('en') else "N/A",
+            "transcript_ne_preview": db_transcript_content.get('ne', '')[:100] + "..." if isinstance(db_transcript_content.get('ne'), str) and db_transcript_content.get('ne') else "N/A",
+            "filename": original_media_name,
+            "date_added": doc_data.get('date_added').isoformat() if isinstance(doc_data.get('date_added'), datetime.datetime) else doc_data.get('date_added'),
+            "last_updated": doc_data.get('last_updated').isoformat() if isinstance(doc_data.get('last_updated'), datetime.datetime) else doc_data.get('last_updated'),
+            "title": doc_data.get("title"),
+            "speaker": doc_data.get("speaker"),
+            "location": doc_data.get("location"),
+            "category": doc_data.get("category"),
+            "keywords": doc_data.get("keywords"),
+            "summary": doc_data.get("summary")
         }
         return jsonify(response_data), 200 if db_status in ["created", "updated", "no change"] else 500
 
@@ -968,6 +1118,7 @@ def generate_transcription_endpoint():
         return jsonify({"status": "error", "message": f"YouTube download failed: {e}"}), 500
     except RuntimeError as e:
         print(f"Error - Processing Runtime Error: {e}")
+        traceback.print_exc() # Log traceback for runtime errors
         for path in files_to_clean: safe_delete(path)
         return jsonify({"status": "error", "message": f"Processing error: {e}"}), 500
     except Exception as e:
@@ -978,76 +1129,12 @@ def generate_transcription_endpoint():
 
 
 # ------------------------------------------------------------
-# --- MODIFICATION: Comment out the old separate metadata endpoint ---
+# --- Comment out the old separate metadata endpoint (from part 2) ---
 # --- This can be repurposed for MANUAL updates later if needed ---
 # ------------------------------------------------------------
 # @app.route("/api/generate-metadata", methods=["POST", "OPTIONS"])
 # def generate_metadata_endpoint_old():
-#     """
-#     (DISABLED - Logic integrated into main endpoint)
-#     Updates metadata for a job, extracting keywords from VTT content stored in DB.
-#     """
-#     if request.method == "OPTIONS": return jsonify({"message": "Preflight OK"}), 200
-#     if not request.is_json: return jsonify({"status": "error", "message": "Request must be JSON"}), 400
-
-#     data = request.json
-#     job_id = data.get("job_id")
-#     # Fields for manual update
-#     url_field = data.get("url")
-#     location = data.get("location")
-#     speaker = data.get("speaker")
-#     category = data.get("category") # Use category instead of type
-#     lang_for_keywords = data.get("keyword_language")
-
-#     if not job_id: return jsonify({"error": "'job_id' is required"}), 400
-
-#     doc = collection.find_one({"job_id": job_id})
-#     if not doc: return jsonify({"error": f"No entry found for job_id '{job_id}'."}), 404
-
-#     # --- Prepare updates based on request data ---
-#     updates_to_set = {}
-#     if url_field is not None: updates_to_set["url"] = url_field
-#     if location is not None: updates_to_set["location"] = location
-#     if speaker is not None: updates_to_set["speaker"] = speaker
-#     if category is not None: updates_to_set["category"] = category # Update category
-
-#     # --- Keyword Extraction (if VTT content exists) ---
-#     transcript_content_map = doc.get("transcript_content", {})
-#     selected_vtt_content = None
-#     selected_lang = None
-
-#     if transcript_content_map:
-#         # Select language based on request or fallbacks
-#         if lang_for_keywords and lang_for_keywords in transcript_content_map:
-#             selected_lang = lang_for_keywords
-#         elif doc.get("detected_language") in transcript_content_map:
-#             selected_lang = doc["detected_language"]
-#         elif transcript_content_map:
-#             selected_lang = next(iter(transcript_content_map))
-
-#         if selected_lang:
-#             selected_vtt_content = transcript_content_map[selected_lang]
-#             if isinstance(selected_vtt_content, str) and not selected_vtt_content.startswith("Error:"):
-#                  vtt_text_for_keywords = extract_text_from_vtt_string(selected_vtt_content)
-#                  if vtt_text_for_keywords:
-#                      keywords = extract_keywords_from_text(vtt_text_for_keywords)
-#                      updates_to_set["keywords"] = keywords
-#                      print(f"Extracted keywords ({len(keywords)}) for manual update request: {keywords}")
-
-#     # Add last updated timestamp
-#     updates_to_set["last_updated"] = dt.now().isoformat()
-
-#     # --- Perform DB Update ---
-#     if not updates_to_set:
-#          return jsonify({"status": "no update needed", "job_id": job_id, "message": "No metadata fields provided for update."})
-#     try:
-#         result = collection.update_one({"_id": doc["_id"]}, {"$set": updates_to_set})
-#         status = "metadata updated" if result.modified_count > 0 else "metadata unchanged"
-#         print(f"Manual metadata update status for job_id {job_id}: {status}")
-#         return jsonify({"status": status, "job_id": job_id, "updated_fields": list(updates_to_set.keys())})
-#     except Exception as e:
-#         app.logger.error(f"Error during manual metadata update for job_id {job_id}: {e}")
-#         return jsonify({"status": "error", "message": f"Database update failed: {e}"}), 500
+#    ... (commented out function body) ...
 
 
 # --- Main Execution ---
@@ -1057,6 +1144,5 @@ if __name__ == "__main__":
     print(f"Transcripts Directory: {os.path.abspath(TRANSCRIPTS_DIR)}")
     print(f"Google Translate Client Available: {'Yes' if google_client else 'No'}")
     print(f"OpenAI API Key Set: {'Yes' if OPENAI_API_KEY else 'No'}")
-    # Set debug=True for development (enables auto-reload and detailed errors)
-    # Set debug=False for production deployment
+    # Set debug=True for development. Set host='0.0.0.0' to make it accessible externally (use with caution).
     app.run(host="0.0.0.0", port=5000, debug=True)
