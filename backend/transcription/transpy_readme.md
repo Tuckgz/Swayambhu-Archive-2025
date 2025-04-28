@@ -39,7 +39,7 @@ pip install --upgrade google-cloud-translate  # Google Translate client
 pip install openai-whisper          # Local Whisper model
 
 # 5. Run help to see usage
-./transcribe.py --help
+python3 trans.py --help
 ```
 
 ---
@@ -50,7 +50,7 @@ pip install openai-whisper          # Local Whisper model
   Store your API key as an environment variable:
 
   ```bash
-  export OPENAI_API_KEY="sk-…"
+  export OPENAI_API_KEY="key-here"
   ```
 
   In Python:
@@ -116,7 +116,7 @@ pip install openai-whisper          # Local Whisper model
 .
 ├── audio_files/      # downloaded or extracted .mp3 files
 ├── transcripts/      # generated .vtt files (original and translated)
-├── transcribe.py     # main CLI script
+├── trans.py          # main CLI script
 └── env/              # Python virtual environment
 ```
 
@@ -129,16 +129,24 @@ pip install openai-whisper          # Local Whisper model
 
 ```bash
 # Transcribe a single MP4 via API
-./transcribe.py --file video.mp4
+python3 trans.py --file video.mp4
+  - "creates a transcript file in the original language"
+  - "ex) youtube_video_en.vtt OR youtube_video_ne.vtt"
 
 # Transcribe locally (Whisper) and translate
-./transcribe.py --file video.mp4 --local --translate
+python3 trans.py --file video.mp4 --local --translate
+  - "creates both english and nepali transcripts and runs whisper locally"
+  - "ex) youtube_video_en.vtt, youtube_video_ne.vtt"
 
 # Download & transcribe YouTube audio
-./transcribe.py --youtube https://youtu.be/xyz --translate
+python3 trans.py --youtube https://youtu.be/xyz --translate
+  - "creates both transcripts using a youtube link"
+  - "ex) youtube_video_en.vtt, youtube_video_ne.vtt"
 
 # Translate an existing VTT subtitles file
-./transcribe.py --file captions.vtt --vtt
+python3 trans.py --file captions_en.vtt --vtt
+  - "creates a translation using a vtt file"
+  - "ex) captions_ne.vtt"
 ```
 
 ---
