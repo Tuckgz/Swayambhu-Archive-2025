@@ -7,6 +7,7 @@ import uploadFiles from "./utils/upload.js";
 import getFile from "./utils/getFile.js";
 import deleteFile from "./utils/deleteFile.js";
 import searchAll from "./utils/searchAll.js";
+import userFile from "./models/userschema.js";
 
 dotenv.config(); 
 const app = express();
@@ -14,7 +15,6 @@ const PORT = process.env.PORT || 5000;
 app.use(express.json());
 app.use(cors()); 
 
-connectDB();
 
 const FOLDER_PATH = "../transcripts";
 uploadFiles(FOLDER_PATH);
@@ -29,6 +29,28 @@ app.use("/api", getFile);
 
 app.use("/api", deleteFile);
 
+
+
+async function createTestUser() {
+  const testUser = await userFile.findOne({ email: "test@example.com" });
+  if (!testUser) {
+    await new userFile({
+      googleId: "test-google-id",
+      email: "test@example.com",
+      name: "Test User",
+      role: "admin",
+    }).save();
+  }
+}
+
+
+
+connectDB()
+  .then(async () => {
+    await createTestUser();  // <-- Add call here!
+    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  })
+  .catch((err) => console.error(err));
 
 
 app.get("/", (req, res) => {
