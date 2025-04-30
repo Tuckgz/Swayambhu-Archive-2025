@@ -33,10 +33,11 @@ choco install ffmpeg -y  # Windows
 python3 -m venv env && source env/bin/activate
 
 # 4. Install Python dependencies
-pip install openai                  # OpenAI SDK
-pip install yt-dlp                  # yt-dlp downloader
-pip install --upgrade google-cloud-translate  # Google Translate client
-pip install openai-whisper          # Local Whisper model
+pip install openai
+pip install yt-dlp
+pip install --upgrade google-cloud-translate
+pip install whisper
+pip install dotenv
 
 # 5. Run help to see usage
 python3 trans.py --help
