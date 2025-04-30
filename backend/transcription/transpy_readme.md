@@ -1,11 +1,17 @@
+# Transcriber & Translator Tool Documentation
+
+**Document Date:** April 30, 2025 (Review annually or when dependencies break)
+
 ## Table of Contents
 
 - [Quick Start (copy/paste)](#quick-start-copypaste)
 - [API Key Setup](#api-key-setup)
-- [Installation \& Dependencies](#installation--dependencies)
+  - [OpenAI API Key](#openai-api-key)
+  - [Google Cloud Translation Key](#google-cloud-translation-key)
+- [Installation & Dependencies](#installation--dependencies)
   - [System Tools (ffmpeg)](#system-tools-ffmpeg)
-  - [Python Packages](#python-packages)
-- [Directory Layout \& File Locations](#directory-layout--file-locations)
+  - [Python Environment & Packages](#python-environment--packages)
+- [Directory Layout & File Locations](#directory-layout--file-locations)
 - [Usage Examples](#usage-examples)
 - [How It Works](#how-it-works)
   - [File-type Processing](#file-type-processing)
@@ -18,176 +24,289 @@
 
 # Quick Start (copy/paste)
 
-```bash
-# 1. Set environment variables
-#    macOS (zsh): ~/.zshenv or ~/.zprofile
-echo 'export OPENAI_API_KEY="sk-…"' >> ~/.zshenv
-echo 'export GOOGLE_APPLICATION_CREDENTIALS="$HOME/path/to/credentials.json"' >> ~/.zshenv
-source ~/.zshenv
+Follow these steps in your terminal.
 
-# 2. Install system tools
-brew install ffmpeg    # macOS
-choco install ffmpeg -y  # Windows
+**1. Set API Environment Variables (Choose your OS)**
 
-# 3. Create & activate Python venv
-python3 -m venv env && source env/bin/activate
+   * **macOS (using zsh/bash):**
+       * *Add to `~/.zshenv` (for zsh) or `~/.bash_profile` / `~/.bashrc` (for bash):*
+           ```bash
+           echo 'export OPENAI_API_KEY="sk-..."' >> ~/.zshenv
+           echo 'export GOOGLE_APPLICATION_CREDENTIALS="$HOME/path/to/your_credentials.json"' >> ~/.zshenv
+           ```
+       * *Apply immediately in your current terminal:*
+           ```bash
+           source ~/.zshenv # Or your relevant bash profile file
+           ```
 
-# 4. Install Python dependencies
-pip install openai
-pip install yt-dlp
-pip install --upgrade google-cloud-translate
-pip install whisper
-pip install dotenv
+   * **Windows (using Command Prompt - `cmd.exe`):**
+       * *Run these commands. Replace paths/keys as needed.*
+           ```batch
+           setx OPENAI_API_KEY "sk-..."
+           setx GOOGLE_APPLICATION_CREDENTIALS "%USERPROFILE%\path\to\your_credentials.json"
+           ```
+       * **IMPORTANT:** Close your current Command Prompt window and open a new one for these settings to take effect. `setx` does not affect the current window.
 
-# 5. Run help to see usage
-python3 trans.py --help
-```
+**2. Install System Tools (`ffmpeg`)**
 
----
+   * **macOS:**
+       ```bash
+       brew install ffmpeg
+       ```
+   * **Windows (using Chocolatey):**
+       ```powershell
+       choco install ffmpeg -y
+       ```
+       *(You might need to run this in an Administrator PowerShell/Command Prompt)*
+
+**3. Create & Activate Python Virtual Environment**
+
+   * **macOS:**
+       ```bash
+       python3 -m venv env
+       source env/bin/activate
+       ```
+   * **Windows (Command Prompt):**
+       ```batch
+       python -m venv env
+       env\Scripts\activate.bat
+       ```
+
+**4. Install Python Dependencies**
+
+   * *(Run this after activating your virtual environment)*
+       ```bash
+       pip install openai yt-dlp google-cloud-translate "openai-whisper @ git+[https://github.com/openai/whisper.git#egg=openai-whisper](https://github.com/openai/whisper.git#egg=openai-whisper)" python-dotenv requests
+       ```
+       *(Note: Installing Whisper directly from git is often recommended for latest updates)*
+
+
+**5. Verify Setup & Run**
+
+   ```bash
+   # Check available options
+   python trans.py --help
+
+   # Example: Transcribe a local file using the API
+   # python trans.py --file your_video.mp4
+````
+
+-----
 
 # API Key Setup
 
-- **OpenAI**:\
-  Store your API key as an environment variable:
+This tool requires API keys for OpenAI (for transcription via API) and Google Cloud (for translation). Set these as environment variables so the script can access them securely.
 
-  ```bash
-  export OPENAI_API_KEY="key-here"
-  ```
+## OpenAI API Key
 
-  In Python:
+1.  Obtain your API key from your [OpenAI Account Settings](https://platform.openai.com/account/api-keys).
 
-  ```python
-  OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-  if not OPENAI_API_KEY:
-      raise RuntimeError("Please set OPENAI_API_KEY")
-  ```
+2.  Set it as an environment variable named `OPENAI_API_KEY`.
 
-- **Google Cloud Translate**:
+      * **macOS (Temporary for session):**
 
-  1. Create a GCP project and enable the **Cloud Translation API**.
-  2. Generate a JSON key under **APIs & Services > Credentials**.
-  3. Export its path:
-     ```bash
-     export GOOGLE_APPLICATION_CREDENTIALS="$HOME/credentials.json"
-     ```
+        ```bash
+        export OPENAI_API_KEY="sk-..."
+        ```
 
----
+        *(For persistence, add this line to `~/.zshenv` or `~/.bash_profile` as shown in Quick Start)*
+
+      * **Windows (Command Prompt - Permanent):**
+
+        ```batch
+        setx OPENAI_API_KEY "sk-..."
+        ```
+
+        *(Remember to open a new terminal after running `setx`)*
+
+3.  The Python script (`trans.py`) should include code to load this:
+
+    ```python
+    import os
+    from dotenv import load_dotenv
+
+    load_dotenv() # Optionally load from a .env file first
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    if not OPENAI_API_KEY:
+        raise EnvironmentError("Error: OPENAI_API_KEY environment variable not set.")
+    ```
+
+## Google Cloud Translation Key
+
+1.  Go to the [Google Cloud Console](https://console.cloud.google.com/).
+
+2.  Create a new GCP project (or select an existing one).
+
+3.  Enable the **Cloud Translation API** for your project.
+
+4.  Go to **APIs & Services \> Credentials**.
+
+5.  Click **Create Credentials \> Service account key**.
+
+6.  Follow the prompts to create a service account (or use an existing one), select **JSON** as the key type, and download the key file.
+
+7.  Save the JSON file to a secure location (e.g., inside your user directory but **outside** your project's code repository).
+
+8.  Set the *full path* to this JSON file as an environment variable named `GOOGLE_APPLICATION_CREDENTIALS`.
+
+      * **macOS (Temporary for session):**
+
+        ```bash
+        export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your/downloaded-key-file.json"
+        # Example: export GOOGLE_APPLICATION_CREDENTIALS="$HOME/gcp_keys/my-project-key.json"
+        ```
+
+        *(For persistence, add this line to `~/.zshenv` or `~/.bash_profile` as shown in Quick Start)*
+
+      * **Windows (Command Prompt - Permanent):**
+
+        ```batch
+        setx GOOGLE_APPLICATION_CREDENTIALS "C:\path\to\your\downloaded-key-file.json"
+        # Example: setx GOOGLE_APPLICATION_CREDENTIALS "%USERPROFILE%\gcp_keys\my-project-key.json"
+        ```
+
+        *(Use the actual full path. Remember to open a new terminal after running `setx`)*
+
+-----
 
 # Installation & Dependencies
 
+*(Covered in [Quick Start](https://www.google.com/search?q=%23quick-start-copypaste). Refer back for commands.)*
+
 ## System Tools (ffmpeg)
 
-- **macOS**:
-  ```bash
-  brew install ffmpeg
-  ```
-- **Windows**:
-  ```powershell
-  choco install ffmpeg -y
-  ```
+FFmpeg is required for extracting audio from video files. Install it using your system's package manager:
 
-## Python Packages
+  * **macOS:** `brew install ffmpeg`
+  * **Windows:** `choco install ffmpeg -y` (using Chocolatey)
 
-| Package                   | Install Command                                       | Description                                           |
-|---------------------------|-------------------------------------------------------|-------------------------------------------------------|
-| `requests`                | `pip install requests`                                | HTTP library for API calls and downloads              |
-| `yt-dlp`                  | `pip install yt-dlp`                                  | Audio/video downloader (YouTube et al.)               |
-| `google-cloud-translate`  | `pip install --upgrade google-cloud-translate`       | Google Cloud Translation client library               |
-| `openai-whisper`          | `pip install openai-whisper`                         | Local Whisper speech-to-text model                    |
-| `openai` _(optional)_     | `pip install openai`                                  | Official OpenAI Python SDK (if you prefer SDK calls) |
+## Python Environment & Packages
 
----------------------------|-------------------------------------------------------|-------------------------------------|
-| `requests`                | `pip install requests`                                | HTTP library for API calls and downloads |
-| `openai`                  | `pip install openai`                                 | Official OpenAI Python SDK          |
-| `yt-dlp`                  | `pip install yt-dlp`                                 | Audio/video downloader              |
-| `google-cloud-translate`  | `pip install --upgrade google-cloud-translate`       | Google Translate client library     |
-| `openai-whisper`          | `pip install openai-whisper`                         | Local Whisper speech-to-text model  |
+It's highly recommended to use a Python virtual environment (`venv`) to manage dependencies.
 
------------------------- | ---------------------------------------------- | ---------------------------------- |
-| `openai`                 | `pip install openai`                           | Official OpenAI Python SDK         |
-| `yt-dlp`                 | `pip install yt-dlp`                           | Audio/video downloader             |
-| `google-cloud-translate` | `pip install --upgrade google-cloud-translate` | Google Translate client library    |
-| `openai-whisper`         | `pip install openai-whisper`                   | Local Whisper speech‑to‑text model |
+1.  **Create venv:** `python -m venv env`
+2.  **Activate venv:**
+      * macOS/Linux: `source env/bin/activate`
+      * Windows (cmd): `env\Scripts\activate.bat`
+3.  **Install Packages:** Use the `pip install ...` command from the [Quick Start](https://www.google.com/search?q=%23quick-start-copypaste) section. The required packages are:
+      * `openai`: Official OpenAI SDK (for API calls).
+      * `yt-dlp`: Downloads audio/video (YouTube, etc.).
+      * `google-cloud-translate`: Google Translation API client.
+      * `openai-whisper`: Local transcription model (installed from git).
+      * `python-dotenv`: Loads environment variables from a `.env` file (optional).
+      * `requests`: HTTP library (often a dependency, good to include explicitly).
 
----
+-----
 
 # Directory Layout & File Locations
 
 ```text
 .
-├── audio_files/      # downloaded or extracted .mp3 files
-├── transcripts/      # generated .vtt files (original and translated)
-├── trans.py          # main CLI script
-└── env/              # Python virtual environment
+├── audio_files/          # Downloaded/extracted MP3 audio files
+├── transcripts/          # Generated VTT subtitle files (original & translated)
+├── env/                    # Python virtual environment directory
+├── trans.py                # The main command-line interface script
+└── your_credentials.json   # Example location for GCP key (Keep secure!)
+└── .env                    # Optional file for environment variables (add to .gitignore!)
 ```
 
-- **audio\_files/**: MP3s from video extractions or YouTube downloads.
-- **transcripts/**: Contains `original_<basename>_<lang>.vtt` and translated `<basename>_<timestamp>_en.vtt`.
+  - **`audio_files/`**: Stores `.mp3` files extracted from videos or downloaded directly. Created automatically if it doesn't exist.
+  - **`transcripts/`**: Stores output `.vtt` files. Created automatically.
+      - Original language: `original_<basename>_<lang>.vtt`
+      - Translated (English): `<basename>_<timestamp>_en.vtt`
 
----
+-----
 
 # Usage Examples
 
+*(Ensure your virtual environment is activated before running)*
+
 ```bash
-# Transcribe a single MP4 via API
-python3 trans.py --file video.mp4
-  - "creates a transcript file in the original language"
-  - "ex) youtube_video_en.vtt OR youtube_video_ne.vtt"
+# Transcribe a local MP4 file using the OpenAI API
+# Output: transcripts/original_video_xx.vtt (xx = detected language)
+python trans.py --file video.mp4
 
-# Transcribe locally (Whisper) and translate
-python3 trans.py --file video.mp4 --local --translate
-  - "creates both english and nepali transcripts and runs whisper locally"
-  - "ex) youtube_video_en.vtt, youtube_video_ne.vtt"
+# Transcribe MP4 locally using Whisper model AND translate to English
+# Outputs: transcripts/original_video_xx.vtt
+#          transcripts/video_YYYYMMDDHHMMSS_en.vtt
+python trans.py --file video.mp4 --local --translate
 
-# Download & transcribe YouTube audio
-python3 trans.py --youtube https://youtu.be/xyz --translate
-  - "creates both transcripts using a youtube link"
-  - "ex) youtube_video_en.vtt, youtube_video_ne.vtt"
+# Download audio from a YouTube video, transcribe via API, and translate
+# Ensure the URL is quoted if it contains special characters
+# Outputs: transcripts/original_youtubevid_xx.vtt
+#          transcripts/youtubevid_YYYYMMDDHHMMSS_en.vtt
+python trans.py --youtube "[https://youtu.be/xyz](https://youtu.be/xyz)" --translate
+# Note: Replace the example URL with a real one.
 
-# Translate an existing VTT subtitles file
-python3 trans.py --file captions_en.vtt --vtt
-  - "creates a translation using a vtt file"
-  - "ex) captions_ne.vtt"
+# Translate an existing English VTT subtitle file to a target language (e.g., Nepali 'ne')
+# Requires modifications to the script logic to support target languages other than English.
+# Current script translates *to* English. Assuming modification for this example:
+# Input: captions_en.vtt
+# Output: transcripts/captions_en_YYYYMMDDHHMMSS_ne.vtt
+# python trans.py --file captions_en.vtt --vtt --target-lang ne
+
+# Translate an existing non-English VTT file TO English
+# Input: captions_es.vtt (Spanish)
+# Output: transcripts/captions_es_YYYYMMDDHHMMSS_en.vtt
+python trans.py --file captions_es.vtt --vtt --translate
 ```
 
----
+-----
 
 # How It Works
 
 ## File-type Processing
 
-- **Video (MP4/MOV)** → `ffmpeg` extracts to `basename.mp3`.
-- **YouTube URL** → `yt-dlp` downloads best audio and converts to MP3.
-- **MP3 input** → used directly.
-- **VTT input** → parsed and optionally passed to translation.
+The script determines the input type and processes accordingly:
+
+1.  **Video (`.mp4`, `.mov`, etc.)**: Uses `ffmpeg` to extract the audio stream into an `.mp3` file saved in `audio_files/`.
+2.  **YouTube URL**: Uses `yt-dlp` to download the best available audio format and converts it to `.mp3`, saving it in `audio_files/`.
+3.  **Audio (`.mp3`, etc.)**: Uses the audio file directly for transcription.
+4.  **VTT Subtitle (`.vtt`)**: Parses the VTT file. If `--translate` is used, passes the text content to the translation step. Skips transcription.
 
 ## Transcription (API vs Local)
 
-- **API (default)**: Calls OpenAI’s Whisper endpoint; outputs verbose segments in VTT.
-- **Local**: Uses `openai-whisper` model in‑process (CPU/GPU).
-- **Filename flow**: Generates `original_<basename>.vtt` then renames to include detected language code (e.g. `_en`).
+Produces a `.vtt` subtitle file from the audio.
 
-## Translation
+  * **API (Default)**:
+      * Uploads the `.mp3` file to the OpenAI Whisper API endpoint.
+      * Receives transcription results, potentially including language detection.
+      * Formats the output as `original_<basename>_<lang>.vtt` in the `transcripts/` directory.
+  * **Local (`--local` flag)**:
+      * Loads the `openai-whisper` model into memory (can be CPU or GPU intensive).
+      * Processes the `.mp3` file locally.
+      * Formats the output as `original_<basename>_<lang>.vtt`.
 
-- Uses Google Cloud Translate to convert segment texts to English.
-- Saves as `<basename>_<timestamp>_en.vtt`.
-- **Free tier**: Up to 500 000 characters/month free.\*
+## Translation (`--translate` flag)
 
----
+Translates the text content (from transcription or an input VTT file) into English.
+
+1.  Parses the original `.vtt` file to extract text segments.
+2.  Sends text segments to the Google Cloud Translation API.
+3.  Receives English translations.
+4.  Formats the translated text back into a new `.vtt` file, saved as `<basename>_<timestamp>_en.vtt` in the `transcripts/` directory.
+
+-----
 
 # Pricing Estimate
 
-- **Whisper API**: \$0.006 per minute of audio (\~\$0.36/hour).\*
-- **Google Translate**: First 500 000 characters free; \$20 per million characters thereafter.
+*Pricing is subject to change. Check provider websites for current rates.*
 
-\*Subject to change per provider’s pricing updates.
+  * **OpenAI Whisper API**: Approximately **$0.006 per minute** of audio processed.
+      * Example: A 60-minute audio file costs roughly $0.36.
+  * **Google Cloud Translation API**:
+      * **Free Tier**: Up to 500,000 characters per month.
+      * **Standard Pricing**: Approximately **$20 per 1 million characters** after the free tier.
+  * **Local Whisper**: No direct cost, but requires computational resources (CPU/GPU time, electricity). Larger models require more RAM/VRAM.
 
----
+-----
 
 # Future Maintenance Notes
 
-- **Library updates**: Run `pip list --outdated`; upgrade via `pip install --upgrade <package>`.
-- **API changes**: Monitor OpenAI and GCP changelogs for endpoint updates.
-- **System tools**: Update FFmpeg via `brew upgrade ffmpeg` or `choco upgrade ffmpeg`.
-- **Document date**: Created April 19, 2025; review annually or when dependencies break.
+  * **Check for Outdated Packages:** Periodically run `pip list --outdated` within the activated virtual environment. Upgrade packages using `pip install --upgrade <package_name>`. Be mindful of potential breaking changes in major version upgrades.
+  * **Update System Tools:** Keep `ffmpeg` updated via `brew upgrade ffmpeg` (macOS) or `choco upgrade ffmpeg` (Windows).
+  * **API Changes:** Monitor OpenAI and Google Cloud documentation/blogs for announcements about API changes or deprecations that might affect the script.
+  * **Whisper Model Updates:** If using the git installation method for Whisper, you can update it by running the `pip install --upgrade git+...` command again.
+  * **Review this Document:** Check annually or if dependencies cause issues. Update commands, links, and pricing estimates as needed.
 
+<!-- end list -->
