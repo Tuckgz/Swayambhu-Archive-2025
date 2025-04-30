@@ -76,7 +76,7 @@ Follow these steps in your terminal.
 
    * *(Run this after activating your virtual environment)*
        ```bash
-       pip install openai yt-dlp google-cloud-translate "openai-whisper @ git+[https://github.com/openai/whisper.git#egg=openai-whisper](https://github.com/openai/whisper.git#egg=openai-whisper)" python-dotenv requests
+       pip install openai yt-dlp google-cloud-translate whisper python-dotenv requests
        ```
        *(Note: Installing Whisper directly from git is often recommended for latest updates)*
 
