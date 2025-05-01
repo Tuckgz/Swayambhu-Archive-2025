@@ -1,13 +1,28 @@
-import React, { useState } from 'react';
-import { FaChevronDown } from 'react-icons/fa';
+import React, { useState } from "react";
+import { FaChevronDown } from "react-icons/fa";
 
 interface DropdownFilterProps {
   title: string;
   options: string[];
+  selected: string[];
+  setSelected: React.Dispatch<React.SetStateAction<string[]>>;
 }
 
-const DropdownFilter: React.FC<DropdownFilterProps> = ({ title, options }) => {
+const DropdownFilter: React.FC<DropdownFilterProps> = ({
+  title,
+  options,
+  selected,
+  setSelected,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
+
+  const handleCheckboxChange = (option: string) => {
+    if (selected.includes(option)) {
+      setSelected(selected.filter((item) => item !== option));
+    } else {
+      setSelected([...selected, option]);
+    }
+  };
 
   return (
     <div className="border-b border-[rgba(215,185,133,0.3)] pb-2">
@@ -18,7 +33,7 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({ title, options }) => {
         <span>{title}</span>
         <FaChevronDown
           className={`transition-transform duration-200 ${
-            isOpen ? 'rotate-180' : 'rotate-0'
+            isOpen ? "rotate-180" : "rotate-0"
           }`}
         />
       </button>
@@ -26,10 +41,15 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({ title, options }) => {
       {isOpen && (
         <div className="mt-2 space-y-2 pl-1">
           {options.map((option, index) => (
-            <div key={index} className="flex items-center space-x-2 text-sm text-gray-800">
+            <div
+              key={index}
+              className="flex items-center space-x-2 text-sm text-gray-800"
+            >
               <input
                 type="checkbox"
                 id={`${title}-${index}`}
+                checked={selected.includes(option)}
+                onChange={() => handleCheckboxChange(option)}
                 className="h-4 w-4 rounded border-gray-300 text-yellow-800 focus:ring-yellow-800"
               />
               <label htmlFor={`${title}-${index}`}>{option}</label>

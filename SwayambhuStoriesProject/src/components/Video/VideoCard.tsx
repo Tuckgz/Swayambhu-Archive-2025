@@ -1,44 +1,80 @@
-import React from 'react';
+import React from "react";
+import { useNavigate } from "react-router-dom";
 
 interface VideoCardProps {
-  title?: string;
-  participants?: string;
-  language?: string;
-  length?: string;
-  categories?: string[];
+  id: number;
+  title: string;
+  participants: string;
+  language: string;
+  length: string;
+  categories: string[];
+  speaker: string;
+  date: Date;
 }
 
 const VideoCard: React.FC<VideoCardProps> = ({
-  title = "TITLE OF THE INTERVIEW",
-  participants = "PARTICIPANT(S) NAME",
-  language = "LANGUAGE",
-  length = "LENGTH",
-  categories = ["Category 1", "Category 2"],
+  id,
+  title,
+  participants,
+  language,
+  length,
+  categories,
+  speaker,
+  date,
 }) => {
+  const navigate = useNavigate();
+
+  const formattedDate = date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+
+  const handleClick = () => {
+    navigate(`/video/${id}`);
+  };
+
   return (
-    <div className="mb-6 flex rounded bg-[rgba(215,185,133,0.13)] shadow-sm transition hover:shadow-md">
-      <div className="h-40 w-60 flex-shrink-0 bg-[rgba(215,185,133,0.3)]" />
-      <div className="flex flex-col justify-between p-6">
-        <div>
-          <h3 className="mb-1 text-lg font-semibold text-gray-800">{title}</h3>
-          <p className="mb-3 text-sm text-gray-700 opacity-80">{participants}</p>
-          <div className="mb-3 flex gap-6 text-xs text-gray-700 opacity-80">
-            <span>{language}</span>
-            <span>{length}</span>
-          </div>
+    <button
+      onClick={handleClick}
+      className="w-full text-left mb-6 flex gap-4 rounded p-4 shadow-sm hover:shadow-md transition-shadow duration-200 bg-orange-100 focus:outline-none"
+    >
+      {/* Thumbnail Placeholder */}
+      <div className="w-32 h-32 bg-gray-300 rounded flex items-center justify-center text-sm text-gray-600">
+        Thumbnail
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 flex flex-col justify-between">
+        {/* Title */}
+        <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
+
+        {/* Metadata Row 1 */}
+        <div className="mt-2 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-700">
+          <p><strong>Participants:</strong> {participants}</p>
+          <p><strong>Language:</strong> {language}</p>
+          <p><strong>Speaker:</strong> {speaker}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {categories.map((category, index) => (
+
+        {/* Metadata Row 2 */}
+        <div className="mt-1 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-700">
+          <p><strong>Length:</strong> {length}</p>
+          <p><strong>Date:</strong> {formattedDate}</p>
+        </div>
+
+        {/* Categories */}
+        <div className="mt-2 flex flex-wrap gap-2">
+          {categories.map((cat, index) => (
             <span
               key={index}
               className="rounded bg-[rgba(215,185,133,0.3)] px-2 py-1 text-xs text-gray-800"
             >
-              {category}
+              {cat}
             </span>
           ))}
         </div>
       </div>
-    </div>
+    </button>
   );
 };
 
