@@ -3,15 +3,22 @@ import DropdownFilter from "../components/Search/DropdownFilter";
 import VideoCard from "../components/Video/VideoCard";
 import { FaFilter } from "react-icons/fa";
 import Header from "../components/Header";
+import UserMenu from "../components/UserMenu";
 
 const HomePage: React.FC = () => {
+
   const [searchTerms, setSearchTerms] = useState<string[]>([]);
   const [newTerm, setNewTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [videos, setVideos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+
   const videosPerPage = 5;
 
+
+  const toggleUserMenu = () => {
+    setUserMenuOpen((prev) => !prev);
+  };
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [selectedSpeakers, setSelectedSpeakers] = useState<string[]>([]);
@@ -56,12 +63,14 @@ const HomePage: React.FC = () => {
     }
   };
 
+
   const handleRemoveTerm = (index: number) => {
     const newTerms = [...searchTerms];
     newTerms.splice(index, 1);
     setSearchTerms(newTerms);
     fetchVideos(newTerms);
   };
+
 
   useEffect(() => {
     fetchVideos(searchTerms);
@@ -141,9 +150,16 @@ const HomePage: React.FC = () => {
   }
 
   return (
-    <div className="bg-amber-50 min-h-screen w-full">
-      <Header />
-      <div className="mx-auto px-5 py-8">
+
+    <div className="relative">
+      {/* Pass the toggle callback to Header */}
+      <Header onUserIconClick={toggleUserMenu} />
+      
+      {/* Conditionally render the UserMenu */}
+      {userMenuOpen && <UserMenu />}
+
+      <div className="mx-auto px-5 py-8 bg-amber-50">
+        {/* Search input and buttons */}
         <div className="mb-8 w-full">
           <div className="flex w-full gap-4 mb-4">
             <input
@@ -152,11 +168,11 @@ const HomePage: React.FC = () => {
               onChange={(e) => setNewTerm(e.target.value)}
               placeholder="Add search term"
               className="w-full rounded border border-yellow-800 bg-orange-100 px-4 py-2 placeholder:text-gray-700 focus:outline-none"
-              onKeyPress={(e) => e.key === "Enter" && handleAddTerm()}
+              onKeyPress={(e) => e.key === "Enter" && newTerm.trim() && setSearchTerms([...searchTerms, newTerm.trim()])}
             />
             <button
               className="w-50 rounded border border-yellow-900 bg-yellow-800 px-4 py-2 text-gray-800 hover:bg-yellow-700"
-              onClick={handleAddTerm}
+              onClick={() => newTerm.trim() && setSearchTerms([...searchTerms, newTerm.trim()])}
             >
               Add Term
             </button>
@@ -172,7 +188,11 @@ const HomePage: React.FC = () => {
                   {term}
                   <button
                     className="ml-2 text-lg font-bold text-gray-800 hover:text-red-500"
-                    onClick={() => handleRemoveTerm(index)}
+                    onClick={() => {
+                      const newTerms = [...searchTerms];
+                      newTerms.splice(index, 1);
+                      setSearchTerms(newTerms);
+                    }}
                   >
                     &times;
                   </button>
@@ -230,9 +250,11 @@ const HomePage: React.FC = () => {
           </div>
         </div>
 
+        {/* Rest of your page content */}
         <div className="flex gap-6">
           <aside className="w-[280px] shrink-0 rounded bg-transparent p-0">
             <div className="space-y-4 rounded bg-[rgba(215,185,133,0.13)] p-6">
+
               <DropdownFilter
                 title="LANGUAGE"
                 options={languageOptions}
