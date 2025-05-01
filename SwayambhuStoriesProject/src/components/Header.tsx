@@ -1,8 +1,25 @@
+// src/components/Header.tsx
 import React from 'react';
-import { FaUserCircle } from 'react-icons/fa';
+import { FaUserCircle, FaArrowLeft } from 'react-icons/fa';
 import logoImage from '../assets/templeIcon.png';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-const Header: React.FC = () => {
+type HeaderProps = {
+  onUserIconClick: () => void;
+};
+
+const Header: React.FC<HeaderProps> = ({ onUserIconClick }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Check if the current path starts with '/admin'
+  const isAdmin = location.pathname.startsWith('/admin');
+
+  // Handler for back button that navigates back to the main page
+  const handleBackClick = () => {
+    navigate('/');
+  };
+
   return (
     <header className="sticky top-0 z-50 h-[60px] bg-yellow-400 shadow-md">
       <div className="flex h-full items-center justify-between px-8">
@@ -17,7 +34,17 @@ const Header: React.FC = () => {
           </h1>
         </div>
         <div className="text-2xl text-gray-800 cursor-pointer">
-          <FaUserCircle />
+          {isAdmin ? (
+            // Show back arrow icon button for admin page
+            <button onClick={handleBackClick}>
+              <FaArrowLeft />
+            </button>
+          ) : (
+            // Show user icon button for main page
+            <div onClick={onUserIconClick}>
+              <FaUserCircle />
+            </div>
+          )}
         </div>
       </div>
     </header>

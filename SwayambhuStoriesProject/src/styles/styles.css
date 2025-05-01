@@ -417,3 +417,19 @@ body {
   margin-left: auto;
   white-space: nowrap;
 }
+
+/* -------------------------------------
+   Admin Page Specific Theme Overrides
+---------------------------------------- */
+
+/* A light tint for the overall admin background using the primary color at low opacity */
+.admin-bg {
+  background-color: rgba(238, 196, 82, 0.1); /* primary color (#EEC452) with 10% opacity */
+}
+
+/* A subtle background color for the sidebar using the secondary color */
+.admin-sidebar-bg {
+  background-color: rgba(215, 185, 133, 0.3); /* secondary color (#D7B985) with 30% opacity */
+  /* Optionally, update text colors to match if needed */
+  color: #2c3e50;
+}
