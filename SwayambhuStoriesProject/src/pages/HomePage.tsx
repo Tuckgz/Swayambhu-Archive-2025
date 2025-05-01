@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import DropdownFilter from "../components/Search/DropdownFilter";
 import VideoCard from "../components/Video/VideoCard";
 import { FaFilter } from "react-icons/fa";
@@ -6,14 +6,13 @@ import Header from "../components/Header";
 import UserMenu from "../components/UserMenu";
 
 const HomePage: React.FC = () => {
-  // Existing states for search and pagination
-  const [searchTerms, setSearchTerms] = useState<string[]>([
-    "Rituals",
-    "Familial Duties",
-  ]);
+
+  const [searchTerms, setSearchTerms] = useState<string[]>([]);
   const [newTerm, setNewTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [videos, setVideos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
   const videosPerPage = 5;
 
 
@@ -25,93 +24,133 @@ const HomePage: React.FC = () => {
   const [selectedSpeakers, setSelectedSpeakers] = useState<string[]>([]);
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
 
-  const languageOptions = ["NEPALI", "ENGLISH"];
+  const languageOptions = ["nepali", "english"];
   const sourceOptions = ["Interview", "Documentary", "Lecture"];
   const speakerOptions = ["Academic", "Community Member", "Religious Leader"];
   const locationOptions = ["Kathmandu", "Patan", "Bhaktapur", "Other"];
 
-  const [sortOption, setSortOption] = useState<string>(""); // "", "duration-asc", "duration-desc", etc.
+  const [sortOption, setSortOption] = useState<string>("");
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
 
+  const fetchVideos = useCallback(async (terms: string[]) => {
+    if (terms.length === 0) {
+      setVideos([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch("http://localhost:5003/api/videos/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ terms }),
+      });
+      const data = await response.json();
+      setVideos(data);
+    } catch (error) {
+      console.error("Search failed:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const handleAddTerm = () => {
-    if (newTerm.trim() && !searchTerms.includes(newTerm.trim())) {
-      setSearchTerms([...searchTerms, newTerm.trim()]);
+    const term = newTerm.trim();
+    if (term && !searchTerms.includes(term)) {
+      const updatedTerms = [...searchTerms, term];
+      setSearchTerms(updatedTerms);
       setNewTerm("");
+      fetchVideos(updatedTerms);
     }
   };
 
-  // ... other handlers (handleAddTerm, handleRemoveTerm, etc.) remain unchanged
 
-  const allVideos = useMemo(() => {
-    return Array.from({ length: 12 }).map((_, i) => {
-      const duration = Math.floor(Math.random() * 60) + 30;
-      return {
-        id: i + 1,
-        title: `Interview Title ${i + 1}`,
-        participants: `Participant ${i + 1}`,
-        language: i % 2 === 0 ? "NEPALI" : "ENGLISH",
-        source:
-          i % 3 === 0 ? "Interview" : i % 3 === 1 ? "Documentary" : "Lecture",
-        speaker:
-          i % 2 === 0
-            ? "Academic"
-            : i % 3 === 0
-            ? "Community Member"
-            : "Religious Leader",
-        location:
-          i % 4 === 0
-            ? "Kathmandu"
-            : i % 4 === 1
-            ? "Patan"
-            : i % 4 === 2
-            ? "Bhaktapur"
-            : "Other",
-        length: `${duration} min`,
-        durationInMinutes: duration,
-        date: new Date(2023, 0, i + 1),
-        categories: [
-          `Category ${(i % 3) + 1}`,
-          `Category ${((i + 1) % 3) + 1}`,
-        ],
-      };
+  const handleRemoveTerm = (index: number) => {
+    const newTerms = [...searchTerms];
+    newTerms.splice(index, 1);
+    setSearchTerms(newTerms);
+    fetchVideos(newTerms);
+  };
+
+
+  useEffect(() => {
+    fetchVideos(searchTerms);
+  }, [searchTerms, fetchVideos]);
+
+  const filteredAndSortedVideos = useMemo(() => {
+    const filtered = videos.filter((video) => {
+      const transcriptLanguages = video.transcript_content
+        ? Object.keys(video.transcript_content).flatMap((lang) => {
+            if (["en", "english"].includes(lang.toLowerCase()))
+              return "english";
+            if (["ne", "nepali"].includes(lang.toLowerCase())) return "nepali";
+            return lang.toLowerCase();
+          })
+        : [];
+
+      const matchesLanguage =
+        selectedLanguages.length === 0 ||
+        selectedLanguages.some((lang) => transcriptLanguages.includes(lang));
+
+      const matchesSource =
+        selectedSources.length === 0 || selectedSources.includes(video.type);
+      const matchesSpeaker =
+        selectedSpeakers.length === 0 ||
+        selectedSpeakers.includes(video.speaker);
+      const matchesLocation =
+        selectedLocations.length === 0 ||
+        selectedLocations.includes(video.location);
+
+      return (
+        matchesLanguage && matchesSource && matchesSpeaker && matchesLocation
+      );
     });
-  }, []);
 
-  const filteredVideos = allVideos.filter((video) => {
-    const matchesLanguage =
-      selectedLanguages.length === 0 ||
-      selectedLanguages.includes(video.language);
-    const matchesSource =
-      selectedSources.length === 0 || selectedSources.includes(video.source);
-    const matchesSpeaker =
-      selectedSpeakers.length === 0 || selectedSpeakers.includes(video.speaker);
-    const matchesLocation =
-      selectedLocations.length === 0 ||
-      selectedLocations.includes(video.location);
+    if (sortOption === "duration-asc") {
+      return filtered.sort(
+        (a, b) => parseDuration(a.duration) - parseDuration(b.duration)
+      );
+    } else if (sortOption === "duration-desc") {
+      return filtered.sort(
+        (a, b) => parseDuration(b.duration) - parseDuration(a.duration)
+      );
+    } else if (sortOption === "date-newest") {
+      return filtered.sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+    } else if (sortOption === "date-oldest") {
+      return filtered.sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+    }
 
-    return (
-      matchesLanguage && matchesSource && matchesSpeaker && matchesLocation
-    );
-  });
-
-  let sortedVideos = [...filteredVideos];
-
-  if (sortOption === "duration-asc") {
-    sortedVideos.sort((a, b) => a.durationInMinutes - b.durationInMinutes);
-  } else if (sortOption === "duration-desc") {
-    sortedVideos.sort((a, b) => b.durationInMinutes - a.durationInMinutes);
-  } else if (sortOption === "date-newest") {
-    sortedVideos.sort((a, b) => b.date.getTime() - a.date.getTime());
-  } else if (sortOption === "date-oldest") {
-    sortedVideos.sort((a, b) => a.date.getTime() - b.date.getTime());
-  }
+    return filtered;
+  }, [
+    videos,
+    selectedLanguages,
+    selectedSources,
+    selectedSpeakers,
+    selectedLocations,
+    sortOption,
+  ]);
 
   const indexOfLastVideo = currentPage * videosPerPage;
   const indexOfFirstVideo = indexOfLastVideo - videosPerPage;
-  const currentVideos = sortedVideos.slice(indexOfFirstVideo, indexOfLastVideo);
-  const totalPages = Math.ceil(sortedVideos.length / videosPerPage);
+  const currentVideos = filteredAndSortedVideos.slice(
+    indexOfFirstVideo,
+    indexOfLastVideo
+  );
+  const totalPages = Math.ceil(filteredAndSortedVideos.length / videosPerPage);
+
+  function parseDuration(duration: string): number {
+    if (!duration) return 0;
+    const parts = duration.split(":");
+    const minutes = parseInt(parts[0]) || 0;
+    const seconds = parseInt(parts[1]) || 0;
+    return minutes * 60 + seconds;
+  }
 
   return (
+
     <div className="relative">
       {/* Pass the toggle callback to Header */}
       <Header onUserIconClick={toggleUserMenu} />
@@ -244,19 +283,38 @@ const HomePage: React.FC = () => {
           </aside>
 
           <div className="flex-1">
-            {currentVideos.map((video) => (
-              <VideoCard
-                key={video.id}
-                id={video.id}
-                title={video.title}
-                participants={video.participants}
-                language={video.language}
-                length={video.length}
-                categories={video.categories}
-                speaker={video.speaker}
-                date={video.date}
-              />
-            ))}
+            {loading ? (
+              <p className="text-gray-700">Searching...</p>
+            ) : searchTerms.length === 0 ? (
+              <div className="text-center text-gray-600 mt-8">
+                <p className="text-lg font-medium">
+                  🔍 Let's find something fascinating.
+                </p>
+                <p className="text-sm">
+                  Add a search term above to begin your journey through the
+                  archive!
+                </p>
+              </div>
+            ) : currentVideos.length > 0 ? (
+              currentVideos.map((video) => (
+                <VideoCard
+                  key={video._id}
+                  id={video._id}
+                  title={video.title}
+                  participants={video.participants || "Unknown"}
+                  language={video.language || "N/A"}
+                  length={video.duration || "0:00"}
+                  categories={video.categories || []}
+                  speaker={video.speaker || "Unknown"}
+                  date={video.date || ""}
+                  thumbnailUrl={video.thumbnail_url || ""}
+                />
+              ))
+            ) : (
+              <p className="text-gray-700">
+                No videos match the search criteria.
+              </p>
+            )}
 
             {totalPages > 1 && (
               <div className="mt-8 flex justify-center gap-2">

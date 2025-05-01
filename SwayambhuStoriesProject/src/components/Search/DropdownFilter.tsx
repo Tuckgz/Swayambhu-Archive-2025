@@ -52,7 +52,7 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
                 onChange={() => handleCheckboxChange(option)}
                 className="h-4 w-4 rounded border-gray-300 text-yellow-800 focus:ring-yellow-800"
               />
-              <label htmlFor={`${title}-${index}`}>{option}</label>
+              <label htmlFor={`${title}-${index}`}>{option.toUpperCase()}</label>
             </div>
           ))}
         </div>
