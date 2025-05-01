@@ -12,7 +12,7 @@ const HomePage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [videos, setVideos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const videosPerPage = 5;
 
 
