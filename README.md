@@ -141,6 +141,7 @@ The backend includes scripts to:
 
 - Add fuzzy search and full-text Mongo indexing
 - Enable ranked search results
+- Implement state management for ease of use
 ---
 
 
