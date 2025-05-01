@@ -4,13 +4,12 @@ import "../styles/styles.css"; // Ensure you import the CSS file
 import Header from "../components/Header";
 import UploadTabCard from "../components/admin/UploadTabCard";
 import ManageContentCard from "../components/admin/ManageContentCard";
-import ManageUsersCard from "../components/admin/ManageUsersCard";
 import SecurityAndPermissionsCard from "../components/admin/SecurityAndPermissionsCard";
 import ManageAdmins from "../components/admin/ManageAdmins";
 
 const AdminPage: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState<
-    "upload" | "manageContent" | "manageUsers" | "security" | "pending approval"
+    "upload" | "manageContent" | "manual entry" | "permissions"
   >("upload");
 
   const renderContent = () => {
@@ -19,11 +18,9 @@ const AdminPage: React.FC = () => {
         return <UploadTabCard />;
       case "manageContent":
         return <ManageContentCard />;
-      case "manageUsers":
-        return <ManageUsersCard />;
-      case "security":
+      case "manual entry":
         return <SecurityAndPermissionsCard />;
-      case "pending approval":
+      case "permissions":
         return <ManageAdmins/>;
       default:
         return null;
@@ -65,38 +62,26 @@ const AdminPage: React.FC = () => {
             </li>
             <li>
               <button
-                onClick={() => setSelectedTab("manageUsers")}
+                onClick={() => setSelectedTab("manual entry")}
                 className={`w-full text-left p-2 rounded hover:bg-[var(--primary-color)] hover:text-[#2c3e50] ${
-                  selectedTab === "manageUsers"
+                  selectedTab === "manual entry"
                     ? "bg-[var(--primary-color)] text-[#2c3e50]"
                     : "bg-white text-gray-800"
                 }`}
               >
-                Manage Users
+                Manual Entry
               </button>
             </li>
             <li>
               <button
-                onClick={() => setSelectedTab("security")}
+                onClick={() => setSelectedTab("permissions")}
                 className={`w-full text-left p-2 rounded hover:bg-[var(--primary-color)] hover:text-[#2c3e50] ${
-                  selectedTab === "security"
+                  selectedTab === "permissions"
                     ? "bg-[var(--primary-color)] text-[#2c3e50]"
                     : "bg-white text-gray-800"
                 }`}
               >
-                Security & Permissions
-              </button>
-            </li>
-            <li>
-              <button
-                onClick={() => setSelectedTab("pending approval")}
-                className={`w-full text-left p-2 rounded hover:bg-[var(--primary-color)] hover:text-[#2c3e50] ${
-                  selectedTab === "security"
-                    ? "bg-[var(--primary-color)] text-[#2c3e50]"
-                    : "bg-white text-gray-800"
-                }`}
-              >
-                Pending Approval
+                Permissions
               </button>
             </li>
           </ul>

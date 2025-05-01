@@ -70,8 +70,8 @@ const SecurityAndPermissionsCard: React.FC = () => {
 
   return (
     <div className="p-4 border rounded shadow">
-      <h2 className="text-xl font-bold mb-2">Security & Permissions</h2>
-      <p>This is a placeholder for security and permissions settings.</p>
+      <h2 className="text-xl font-bold mb-2">Manual Entry</h2>
+      <p>This is a placeholder for manual entry settings.</p>
 
       {/* Section to add a document */}
       <div className="mt-4">
