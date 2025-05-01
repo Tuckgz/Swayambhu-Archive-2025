@@ -7,6 +7,7 @@ import uploadFiles from "./utils/upload.js";
 import getFile from "./utils/getFile.js";
 import deleteFile from "./utils/deleteFile.js";
 import searchAll from "./utils/searchAll.js";
+import videoRoutes from "./routes/videoRoutes.js";
 
 dotenv.config(); 
 const app = express();
@@ -15,6 +16,9 @@ app.use(express.json());
 app.use(cors()); 
 
 connectDB();
+
+//Testing as of 4/30
+app.use("/api/videos", videoRoutes);
 
 const FOLDER_PATH = "../transcripts";
 uploadFiles(FOLDER_PATH);
